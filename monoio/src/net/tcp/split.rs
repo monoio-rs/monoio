@@ -1,18 +1,12 @@
-use std::{
-    fmt::{self},
-    future::Future,
-    io,
-    net::SocketAddr,
-};
+use std::{future::Future, io, net::SocketAddr};
 
 use super::TcpStream;
 use crate::{
     buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut},
     io::{
         as_fd::{AsReadFd, AsWriteFd, SharedFdWrapper},
-        AsyncReadRent, AsyncWriteRent,
+        AsyncReadRent, AsyncWriteRent, OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf,
     },
-    io::{AsyncReadRent, AsyncWriteRent, OwnedReadHalf, OwnedWriteHalf, ReadHalf, WriteHalf},
 };
 
 /// ReadHalf.
@@ -21,7 +15,7 @@ pub type TcpReadHalf<'a> = ReadHalf<'a, TcpStream>;
 pub type TcpWriteHalf<'a> = WriteHalf<'a, TcpStream>;
 
 #[allow(clippy::cast_ref_to_mut)]
-impl<'t> AsReadFd for ReadHalf<'t> {
+impl<'t> AsReadFd for TcpReadHalf<'t> {
     fn as_reader_fd(&mut self) -> &SharedFdWrapper {
         let raw_stream = unsafe { &mut *(self.0 as *const TcpStream as *mut TcpStream) };
         raw_stream.as_reader_fd()
@@ -49,7 +43,7 @@ impl<'t> AsyncReadRent for TcpReadHalf<'t> {
 }
 
 #[allow(clippy::cast_ref_to_mut)]
-impl<'t> AsWriteFd for WriteHalf<'t> {
+impl<'t> AsWriteFd for TcpWriteHalf<'t> {
     fn as_writer_fd(&mut self) -> &SharedFdWrapper {
         let raw_stream = unsafe { &mut *(self.0 as *const TcpStream as *mut TcpStream) };
         raw_stream.as_writer_fd()
@@ -94,19 +88,6 @@ pub type TcpOwnedReadHalf = OwnedReadHalf<TcpStream>;
 /// OwnedWriteHalf
 pub type TcpOwnedWriteHalf = OwnedWriteHalf<TcpStream>;
 
-/// Error indicating that two halves were not from the same socket, and thus
-/// could not be reunited.
-pub struct ReuniteError(pub TcpOwnedReadHalf, pub TcpOwnedWriteHalf);
-
-impl fmt::Display for ReuniteError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "tried to reunite halves that are not from the same socket"
-        )
-    }
-}
-
 // impl Error for ReuniteError{}
 
 impl TcpOwnedReadHalf {
@@ -121,7 +102,7 @@ impl TcpOwnedReadHalf {
     }
 }
 
-impl AsReadFd for OwnedReadHalf {
+impl AsReadFd for TcpOwnedReadHalf {
     fn as_reader_fd(&mut self) -> &SharedFdWrapper {
         let raw_stream = unsafe { &mut *self.0.get() };
         raw_stream.as_reader_fd()
@@ -159,51 +140,9 @@ impl TcpOwnedWriteHalf {
     }
 }
 
-impl AsWriteFd for OwnedWriteHalf {
+impl AsWriteFd for TcpOwnedWriteHalf {
     fn as_writer_fd(&mut self) -> &SharedFdWrapper {
         let raw_stream = unsafe { &mut *self.0.get() };
         raw_stream.as_writer_fd()
-    }
-}
-
-impl AsyncWriteRent for TcpOwnedWriteHalf {
-    type WriteFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> where
-        B: IoBuf + 'a;
-    type WritevFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> where
-        B: IoVecBuf + 'a;
-    type FlushFuture<'a> = impl Future<Output = io::Result<()>>;
-    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>>;
-
-    fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
-        // Submit the write operation
-        let raw_stream = unsafe { &mut *self.0.get() };
-        raw_stream.write(buf)
-    }
-
-    fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
-        let raw_stream = unsafe { &mut *self.0.get() };
-        raw_stream.writev(buf_vec)
-    }
-
-    fn flush(&mut self) -> Self::FlushFuture<'_> {
-        // Tcp stream does not need flush.
-        async move { Ok(()) }
-    }
-
-    fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
-        let raw_stream = unsafe { &mut *self.0.get() };
-        raw_stream.shutdown()
-    }
-}
-
-impl<T> Drop for OwnedWriteHalf<T>
-where
-    T: AsyncWriteRent,
-{
-    fn drop(&mut self) {
-        let write = unsafe { &mut *self.0.get() };
-        // Notes:: shutdown is an async function but rust currently does not support async drop
-        // this drop will only execute sync part of `shutdown` function.
-        write.shutdown();
     }
 }

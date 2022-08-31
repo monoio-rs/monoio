@@ -103,7 +103,7 @@ where
     }
 }
 
-impl<Inner> AsyncWriteRent for OwnedReadHalf<Inner>
+impl<Inner> AsyncWriteRent for OwnedWriteHalf<Inner>
 where
     Inner: AsyncWriteRent,
 {
@@ -166,6 +166,18 @@ where
     }
 }
 
+impl<T> Drop for OwnedWriteHalf<T>
+where
+    T: AsyncWriteRent,
+{
+    fn drop(&mut self) {
+        let write = unsafe { &mut *self.0.get() };
+        // Notes:: shutdown is an async function but rust currently does not support async drop
+        // this drop will only execute sync part of `shutdown` function.
+        write.shutdown();
+    }
+}
+
 pub(crate) fn reunite<T: AsyncWriteRent + Debug>(
     read: OwnedReadHalf<T>,
     write: OwnedWriteHalf<T>,
@@ -185,7 +197,7 @@ pub(crate) fn reunite<T: AsyncWriteRent + Debug>(
 /// Error indicating that two halves were not from the same socket, and thus
 /// could not be reunited.
 #[derive(Debug)]
-pub struct ReuniteError<T: AsyncWriteRent + Debug>(pub OwnedReadHalf<T>, pub OwnedWriteHalf<T>);
+pub struct ReuniteError<T: AsyncWriteRent>(pub OwnedReadHalf<T>, pub OwnedWriteHalf<T>);
 
 impl<T> fmt::Display for ReuniteError<T>
 where

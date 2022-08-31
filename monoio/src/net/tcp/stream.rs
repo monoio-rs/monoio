@@ -15,9 +15,8 @@ use crate::{
     driver::{op::Op, shared_fd::SharedFd},
     io::{
         as_fd::{AsReadFd, AsWriteFd, SharedFdWrapper},
-        AsyncReadRent, AsyncWriteRent,
+        AsyncReadRent, AsyncWriteRent, Split,
     },
-    io::{AsyncReadRent, AsyncWriteRent, Split},
 };
 
 const EMPTY_SLICE: [u8; 0] = [];
@@ -192,11 +191,11 @@ impl AsyncWriteRent for TcpStream {
         // We could use shutdown op here, which requires kernel 5.11+.
         // However, for simplicity, we just close the socket using direct syscall.
         let fd = self.as_raw_fd();
-        match unsafe { libc::shutdown(fd, libc::SHUT_WR) } {
+        let res = match unsafe { libc::shutdown(fd, libc::SHUT_WR) } {
             -1 => Err(io::Error::last_os_error()),
             _ => Ok(()),
         };
-        async move { Ok(()) }
+        async move { res }
     }
     #[cfg(windows)]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
