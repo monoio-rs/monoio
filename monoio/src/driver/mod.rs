@@ -192,6 +192,44 @@ impl Inner {
     }
 
     #[cfg(all(target_os = "linux", feature = "iouring"))]
+    pub(crate) fn submit_multishot_with<T: OpAble>(
+        &self,
+        data: &mut T,
+        queue_capacity: usize,
+    ) -> io::Result<usize> {
+        match self {
+            Inner::Uring(this) => UringInner::submit_multishot_with(this, data, queue_capacity),
+            #[cfg(feature = "legacy")]
+            Inner::Legacy(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "multishot not supported on legacy driver",
+            )),
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    pub(crate) fn poll_multishot_op(
+        &self,
+        index: usize,
+        cx: &mut Context<'_>,
+    ) -> uring::lifecycle::MultishotPollResult {
+        match self {
+            Inner::Uring(this) => UringInner::poll_multishot_op(this, index, cx),
+            #[cfg(feature = "legacy")]
+            Inner::Legacy(_) => uring::lifecycle::MultishotPollResult::Done,
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    pub(crate) fn remove_op(&self, index: usize) {
+        match self {
+            Inner::Uring(this) => UringInner::remove_op(this, index),
+            #[cfg(feature = "legacy")]
+            Inner::Legacy(_) => {}
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
     pub(crate) fn register_buf_ring(
         &self,
         ring_addr: u64,

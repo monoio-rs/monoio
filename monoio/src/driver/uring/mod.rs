@@ -11,7 +11,7 @@ use std::{
 };
 
 use io_uring::{cqueue, opcode, types::Timespec, IoUring};
-use lifecycle::MaybeFdLifecycle;
+use lifecycle::{MaybeFdLifecycle, MultishotPollResult};
 
 use super::{
     op::{CompletionMeta, Op, OpAble},
@@ -24,7 +24,7 @@ use super::{
 };
 use crate::utils::slab::Slab;
 
-mod lifecycle;
+pub(crate) mod lifecycle;
 #[cfg(feature = "sync")]
 mod waker;
 #[cfg(feature = "sync")]
@@ -382,6 +382,7 @@ impl UringInner {
 
         for cqe in cq {
             let index = cqe.user_data();
+            let flags = cqe.flags();
             match index {
                 #[cfg(feature = "sync")]
                 EVENTFD_USERDATA => self.eventfd_installed = false,
@@ -393,7 +394,7 @@ impl UringInner {
                 _ if index >= MIN_REVERSED_USERDATA => (),
                 // # Safety
                 // Here we can make sure the result is valid.
-                _ => unsafe { self.ops.complete(index as _, resultify(&cqe), cqe.flags()) },
+                _ => unsafe { self.ops.complete(index as _, resultify(&cqe), flags) },
             }
         }
         Ok(())
@@ -426,7 +427,7 @@ impl UringInner {
     fn new_op<T: OpAble>(data: T, inner: &mut UringInner, driver: Inner) -> Op<T> {
         Op {
             driver,
-            index: inner.ops.insert(T::RET_IS_FD),
+            index: inner.ops.insert::<T>(),
             data: Some(data),
         }
     }
@@ -515,7 +516,6 @@ impl UringInner {
     ) {
         let inner = unsafe { &mut *this.get() };
         if index == usize::MAX {
-            // already finished
             return;
         }
         if let Some(lifecycle) = inner.ops.slab.get(index) {
@@ -527,7 +527,6 @@ impl UringInner {
                         .build()
                         .user_data(u64::MAX);
 
-                    // Try push cancel, if failed, will submit and re-push.
                     if inner.uring.submission().push(&cancel).is_err() {
                         let _ = inner.submit();
                         let _ = inner.uring.submission().push(&cancel);
@@ -553,6 +552,47 @@ impl UringInner {
         let inner = unsafe { &*this.get() };
         let weak = std::sync::Arc::downgrade(&inner.shared_waker);
         waker::UnparkHandle(weak)
+    }
+
+    pub(crate) fn submit_multishot_with<T>(
+        this: &Rc<UnsafeCell<UringInner>>,
+        data: &mut T,
+        queue_capacity: usize,
+    ) -> io::Result<usize>
+    where
+        T: OpAble,
+    {
+        let inner = unsafe { &mut *this.get() };
+        if inner.uring.submission().is_full() {
+            inner.submit()?;
+        }
+
+        let index = inner.ops.insert_multishot(queue_capacity, T::RET_IS_FD);
+        let sqe = OpAble::uring_op(data).user_data(index as _);
+
+        {
+            let mut sq = inner.uring.submission();
+            if unsafe { sq.push(&sqe).is_err() } {
+                inner.ops.remove(index);
+                return Err(io::Error::other("submission queue full"));
+            }
+        }
+
+        Ok(index)
+    }
+
+    pub(crate) fn poll_multishot_op(
+        this: &Rc<UnsafeCell<UringInner>>,
+        index: usize,
+        cx: &mut Context<'_>,
+    ) -> MultishotPollResult {
+        let inner = unsafe { &mut *this.get() };
+        inner.ops.poll_multishot(index, cx)
+    }
+
+    pub(crate) fn remove_op(this: &Rc<UnsafeCell<UringInner>>, index: usize) {
+        let inner = unsafe { &mut *this.get() };
+        inner.ops.remove(index);
     }
 
     pub(crate) fn register_buf_ring(
@@ -622,19 +662,37 @@ impl Ops {
         Ops { slab: Slab::new() }
     }
 
-    // Insert a new operation
     #[inline]
-    pub(crate) fn insert(&mut self, is_fd: bool) -> usize {
-        self.slab.insert(MaybeFdLifecycle::new(is_fd))
+    pub(crate) fn insert<T: OpAble>(&mut self) -> usize {
+        self.slab.insert(MaybeFdLifecycle::new(T::RET_IS_FD))
     }
 
-    // Complete an operation
-    // # Safety
-    // Caller must make sure the result is valid.
+    #[inline]
+    pub(crate) fn insert_multishot(&mut self, queue_capacity: usize, is_fd: bool) -> usize {
+        self.slab
+            .insert(MaybeFdLifecycle::new_multishot(queue_capacity, is_fd))
+    }
+
+    /// # Safety
+    /// Caller must make sure the result is valid.
     #[inline]
     unsafe fn complete(&mut self, index: usize, result: io::Result<u32>, flags: u32) {
         let lifecycle = unsafe { self.slab.get(index).unwrap_unchecked() };
         lifecycle.complete(result, flags);
+    }
+
+    #[inline]
+    fn poll_multishot(&mut self, index: usize, cx: &mut Context<'_>) -> MultishotPollResult {
+        if let Some(lifecycle) = self.slab.get(index) {
+            lifecycle.poll_multishot(cx)
+        } else {
+            MultishotPollResult::Done
+        }
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) {
+        let _ = self.slab.remove(index);
     }
 }
 
