@@ -554,6 +554,29 @@ impl UringInner {
         let weak = std::sync::Arc::downgrade(&inner.shared_waker);
         waker::UnparkHandle(weak)
     }
+
+    pub(crate) fn register_buf_ring(
+        this: &Rc<UnsafeCell<UringInner>>,
+        ring_addr: u64,
+        ring_entries: u16,
+        bgid: u16,
+    ) -> io::Result<()> {
+        let inner = unsafe { &mut *this.get() };
+        unsafe {
+            inner
+                .uring
+                .submitter()
+                .register_buf_ring(ring_addr, ring_entries, bgid)
+        }
+    }
+
+    pub(crate) fn unregister_buf_ring(
+        this: &Rc<UnsafeCell<UringInner>>,
+        bgid: u16,
+    ) -> io::Result<()> {
+        let inner = unsafe { &mut *this.get() };
+        inner.uring.submitter().unregister_buf_ring(bgid)
+    }
 }
 
 impl AsRawFd for IoUringDriver {

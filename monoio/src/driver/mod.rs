@@ -191,6 +191,34 @@ impl Inner {
         }
     }
 
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    pub(crate) fn register_buf_ring(
+        &self,
+        ring_addr: u64,
+        ring_entries: u16,
+        bgid: u16,
+    ) -> io::Result<()> {
+        match self {
+            Inner::Uring(this) => {
+                UringInner::register_buf_ring(this, ring_addr, ring_entries, bgid)
+            }
+            #[cfg(feature = "legacy")]
+            Inner::Legacy(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "buffer ring not supported on legacy driver",
+            )),
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    pub(crate) fn unregister_buf_ring(&self, bgid: u16) -> io::Result<()> {
+        match self {
+            Inner::Uring(this) => UringInner::unregister_buf_ring(this, bgid),
+            #[cfg(feature = "legacy")]
+            Inner::Legacy(_) => Ok(()),
+        }
+    }
+
     #[cfg(all(target_os = "linux", feature = "iouring", feature = "legacy"))]
     fn is_legacy(&self) -> bool {
         matches!(self, Inner::Legacy(..))
