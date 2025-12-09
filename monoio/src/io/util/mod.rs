@@ -9,7 +9,7 @@ mod split;
 
 pub use buf_reader::BufReader;
 pub use buf_writer::BufWriter;
-pub(crate) use cancel::operation_canceled;
+pub(crate) use cancel::{is_operation_canceled, operation_canceled, AssociateGuard};
 pub use cancel::{CancelHandle, Canceller};
 pub use copy::copy;
 #[cfg(all(target_os = "linux", feature = "splice"))]
