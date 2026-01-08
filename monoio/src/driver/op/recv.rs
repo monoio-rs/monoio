@@ -250,7 +250,7 @@ impl<T: IoBufMut> OpAble for RecvMsg<T> {
                 fd,
                 SIO_GET_EXTENSION_FUNCTION_POINTER,
                 &WSAID_WSARECVMSG as *const _ as *const std::ffi::c_void,
-                std::mem::size_of::<GUID> as usize as u32,
+                std::mem::size_of::<GUID>() as u32,
                 &mut wsa_recv_msg as *mut _ as *mut std::ffi::c_void,
                 std::mem::size_of::<LPFN_WSARECVMSG>() as _,
                 &mut dw_bytes,

@@ -9,16 +9,10 @@ allow = [
   "Unicode-3.0",
 ]
 confidence-threshold = 0.95
-copyleft = "deny"
-default = "deny"
 private = {ignore = true}
-unlicensed = "deny"
 
 [advisories]
-notice = "deny"
-unmaintained = "deny"
-unsound = "deny"
-vulnerability = "deny"
+unmaintained = "all"
 
 [bans]
 multiple-versions = "allow"
