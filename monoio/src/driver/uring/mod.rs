@@ -44,13 +44,6 @@ pub(crate) const MIN_REVERSED_USERDATA: u64 = u64::MAX - 3;
 pub struct IoUringDriver {
     inner: Rc<UnsafeCell<UringInner>>,
 
-    // Used as timeout buffer
-    timespec: *mut Timespec,
-
-    // Used as read eventfd buffer
-    #[cfg(feature = "sync")]
-    eventfd_read_dst: *mut u8,
-
     // Used for drop
     #[cfg(feature = "sync")]
     thread_id: usize,
@@ -59,6 +52,13 @@ pub struct IoUringDriver {
 pub(crate) struct UringInner {
     /// In-flight operations
     ops: Ops,
+
+    // Used as timeout buffer
+    timespec: Timespec,
+
+    // Used as read eventfd buffer
+    #[cfg(feature = "sync")]
+    eventfd_read_dst: [u8; 8],
 
     #[cfg(feature = "poll-io")]
     poll: super::poll::Poll,
@@ -110,14 +110,12 @@ impl IoUringDriver {
             #[cfg(feature = "poll-io")]
             poller_installed: false,
             ops: Ops::new(),
+            timespec: Timespec::new(),
             ext_arg: uring.params().is_feature_ext_arg(),
             uring,
         }));
 
-        Ok(IoUringDriver {
-            inner,
-            timespec: Box::leak(Box::new(Timespec::new())) as *mut Timespec,
-        })
+        Ok(IoUringDriver { inner })
     }
 
     #[cfg(feature = "sync")]
@@ -144,20 +142,17 @@ impl IoUringDriver {
             #[cfg(feature = "poll-io")]
             poll: super::poll::Poll::with_capacity(entries as usize)?,
             ops: Ops::new(),
+            timespec: Timespec::new(),
             ext_arg: uring.params().is_feature_ext_arg(),
             uring,
             shared_waker: std::sync::Arc::new(waker::EventWaker::new(waker)),
             eventfd_installed: false,
+            eventfd_read_dst: [0_u8; 8],
             waker_receiver,
         }));
 
         let thread_id = crate::builder::BUILD_THREAD_ID.with(|id| *id);
-        let driver = IoUringDriver {
-            inner,
-            timespec: Box::leak(Box::new(Timespec::new())) as *mut Timespec,
-            eventfd_read_dst: Box::leak(Box::new([0_u8; 8])) as *mut u8,
-            thread_id,
-        };
+        let driver = IoUringDriver { inner, thread_id };
 
         // Register unpark handle
         super::thread::register_unpark_handle(thread_id, driver.unpark().into());
@@ -184,9 +179,13 @@ impl IoUringDriver {
 
     #[cfg(feature = "sync")]
     fn install_eventfd(&self, inner: &mut UringInner, fd: RawFd) {
-        let entry = opcode::Read::new(io_uring::types::Fd(fd), self.eventfd_read_dst, 8)
-            .build()
-            .user_data(EVENTFD_USERDATA);
+        let entry = opcode::Read::new(
+            io_uring::types::Fd(fd),
+            inner.eventfd_read_dst.as_mut_ptr(),
+            8,
+        )
+        .build()
+        .user_data(EVENTFD_USERDATA);
 
         let mut sq = inner.uring.submission();
         let _ = unsafe { sq.push(&entry) };
@@ -205,11 +204,8 @@ impl IoUringDriver {
     }
 
     fn install_timeout(&self, inner: &mut UringInner, duration: Duration) {
-        let timespec = timespec(duration);
-        unsafe {
-            std::ptr::replace(self.timespec, timespec);
-        }
-        let entry = opcode::Timeout::new(self.timespec as *const Timespec)
+        inner.timespec = timespec(duration);
+        let entry = opcode::Timeout::new(&inner.timespec as *const Timespec)
             .build()
             .user_data(TIMEOUT_USERDATA);
 
@@ -565,14 +561,6 @@ impl AsRawFd for IoUringDriver {
 impl Drop for IoUringDriver {
     fn drop(&mut self) {
         trace!("MONOIO DEBUG[IoUringDriver]: drop");
-
-        // Dealloc leaked memory
-        unsafe { std::ptr::drop_in_place(self.timespec) };
-
-        #[cfg(feature = "sync")]
-        unsafe {
-            std::ptr::drop_in_place(self.eventfd_read_dst)
-        };
 
         // Deregister thread id
         #[cfg(feature = "sync")]
