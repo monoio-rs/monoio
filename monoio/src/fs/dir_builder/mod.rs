@@ -127,7 +127,11 @@ impl DirBuilder {
         }
 
         for p in need_create.into_iter().rev() {
-            self.inner.mkdir(p).await?;
+            match self.inner.mkdir(p).await {
+                Ok(()) => {}
+                Err(_) if is_dir(p).await => {}
+                Err(e) => return Err(e),
+            }
         }
 
         Ok(())
