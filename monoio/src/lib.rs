@@ -41,6 +41,8 @@ pub use builder::{Buildable, RuntimeBuilder};
 pub use driver::Driver;
 #[cfg(all(target_os = "linux", feature = "iouring"))]
 pub use driver::IoUringDriver;
+#[cfg(all(windows, feature = "iocp"))]
+pub use driver::IocpDriver;
 #[cfg(feature = "legacy")]
 pub use driver::LegacyDriver;
 #[cfg(feature = "macros")]

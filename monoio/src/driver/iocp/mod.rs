@@ -261,7 +261,7 @@ impl Drop for Poller {
 
             let result = self
                 .cp
-                .get_many(&mut statuses, Some(std::time::Duration::from_millis(0)));
+                .get_many(&mut statuses, Some(Duration::from_millis(0)));
             match result {
                 Ok(events) => {
                     count = events.iter().len();
@@ -315,4 +315,381 @@ pub fn interests_to_afd_flags(interests: mio::Interest) -> u32 {
     }
 
     flags
+}
+
+/// Monoio IOCP Driver.
+use std::{
+    cell::UnsafeCell,
+    mem::ManuallyDrop,
+    rc::Rc,
+    task::{Context, Poll},
+};
+
+#[cfg(feature = "sync")]
+pub(crate) use waker::UnparkHandle;
+use windows_sys::Win32::Networking::WinSock::{
+    setsockopt, SOCKET, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, WSAENETDOWN,
+};
+
+use super::{
+    op::{CompletionMeta, Op, OpAble},
+    Driver, Inner, CURRENT,
+};
+#[cfg(feature = "iocp")]
+use crate::driver::op::{Overlapped, Syscall};
+#[cfg(feature = "iocp")]
+use crate::{driver::lifecycle::MaybeFdLifecycle, utils::slab::Slab};
+
+#[allow(unused)]
+pub(crate) const CANCEL_USERDATA: u64 = u64::MAX;
+
+pub(crate) const MIN_REVERSED_USERDATA: u64 = u64::MAX - 3;
+
+/// Driver with IOCP.
+#[cfg(feature = "iocp")]
+pub struct IocpDriver {
+    inner: Rc<UnsafeCell<IocpInner>>,
+
+    // Used as read eventfd buffer
+    #[cfg(feature = "sync")]
+    eventfd_read_dst: *mut u8,
+
+    // Used for drop
+    #[cfg(feature = "sync")]
+    thread_id: usize,
+}
+
+#[cfg(feature = "iocp")]
+pub(crate) struct IocpInner {
+    /// In-flight operations
+    ops: Ops,
+
+    /// IOCP bindings
+    iocp: ManuallyDrop<CompletionPort>,
+
+    /// Shared waker
+    #[cfg(feature = "sync")]
+    shared_waker: Arc<EventWaker>,
+
+    // Mark if eventfd is in the ring
+    #[cfg(feature = "sync")]
+    eventfd_installed: bool,
+
+    // Waker receiver
+    #[cfg(feature = "sync")]
+    waker_receiver: flume::Receiver<std::task::Waker>,
+}
+
+// When dropping the driver, all in-flight operations must have completed. This
+// type wraps the slab and ensures that, on drop, the slab is empty.
+#[cfg(feature = "iocp")]
+struct Ops {
+    slab: Slab<MaybeFdLifecycle>,
+}
+
+#[cfg(feature = "iocp")]
+impl IocpDriver {
+    const DEFAULT_ENTRIES: u32 = 1024;
+
+    pub(crate) fn new() -> std::io::Result<IocpDriver> {
+        Self::new_with_entries(Self::DEFAULT_ENTRIES)
+    }
+
+    #[cfg(not(feature = "sync"))]
+    pub(crate) fn new_with_entries(_entries: u32) -> std::io::Result<IocpDriver> {
+        let inner = Rc::new(UnsafeCell::new(IocpInner {
+            ops: Ops::new(),
+            iocp: ManuallyDrop::new(CompletionPort::new(0)?),
+        }));
+
+        Ok(IocpDriver { inner })
+    }
+
+    #[cfg(feature = "sync")]
+    pub(crate) fn new_with_entries(_entries: u32) -> std::io::Result<IocpDriver> {
+        // Create eventfd and register it to the ring.
+        let waker = tempfile::tempfile()?;
+
+        let (waker_sender, waker_receiver) = flume::unbounded::<std::task::Waker>();
+
+        let inner = Rc::new(UnsafeCell::new(IocpInner {
+            ops: Ops::new(),
+            iocp: ManuallyDrop::new(CompletionPort::new(0)?),
+            shared_waker: Arc::new(EventWaker::new(waker)),
+            eventfd_installed: false,
+            waker_receiver,
+        }));
+
+        let thread_id = crate::builder::BUILD_THREAD_ID.with(|id| *id);
+        let driver = IocpDriver {
+            inner,
+            eventfd_read_dst: Box::leak(Box::new([0_u8; 8])) as *mut u8,
+            thread_id,
+        };
+
+        // Register unpark handle
+        super::thread::register_unpark_handle(thread_id, driver.unpark().into());
+        super::thread::register_waker_sender(thread_id, waker_sender);
+        Ok(driver)
+    }
+
+    #[allow(unused)]
+    fn num_operations(&self) -> usize {
+        let inner = self.inner.get();
+        unsafe { (*inner).ops.slab.len() }
+    }
+
+    fn inner_park(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        let inner = unsafe { &mut *self.inner.get() };
+
+        #[allow(unused_mut)]
+        let mut need_wait = true;
+
+        #[cfg(feature = "sync")]
+        {
+            // Process foreign wakers
+            while let Ok(w) = inner.waker_receiver.try_recv() {
+                w.wake();
+                need_wait = false;
+            }
+
+            // Set status as not awake if we are going to sleep
+            if need_wait {
+                inner
+                    .shared_waker
+                    .awake
+                    .store(false, std::sync::atomic::Ordering::Release);
+            }
+
+            // Process foreign wakers left
+            while let Ok(w) = inner.waker_receiver.try_recv() {
+                w.wake();
+                need_wait = false;
+            }
+        }
+
+        let mut cq: [OVERLAPPED_ENTRY; 1024] = unsafe { std::mem::zeroed() };
+        if need_wait {
+            // submit_and_wait with timeout
+            inner.iocp.get_many(&mut cq, timeout)?;
+        } else {
+            // Submit only
+            inner.iocp.get_many(&mut cq, Some(Duration::ZERO))?;
+        }
+
+        // Set status as awake
+        #[cfg(feature = "sync")]
+        inner.shared_waker.awake.store(true, Ordering::Release);
+
+        // Process CQ
+        inner.tick(cq)?;
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "iocp")]
+impl Driver for IocpDriver {
+    /// Enter the driver context. This enables using iocp types.
+    fn with<R>(&self, f: impl FnOnce() -> R) -> R {
+        // TODO(ihciah): remove clone
+        let inner = Inner::Iocp(self.inner.clone());
+        CURRENT.set(&inner, f)
+    }
+
+    fn submit(&self) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn park(&self) -> std::io::Result<()> {
+        self.inner_park(None)
+    }
+
+    fn park_timeout(&self, duration: Duration) -> std::io::Result<()> {
+        self.inner_park(Some(duration))
+    }
+
+    #[cfg(feature = "sync")]
+    type Unpark = UnparkHandle;
+
+    #[cfg(feature = "sync")]
+    fn unpark(&self) -> Self::Unpark {
+        IocpInner::unpark(&self.inner)
+    }
+}
+
+#[cfg(feature = "iocp")]
+impl IocpInner {
+    fn tick(&mut self, cq: [OVERLAPPED_ENTRY; 1024]) -> std::io::Result<()> {
+        for entry in cq {
+            let cqe = unsafe { *Box::from_raw(entry.lpOverlapped.cast::<Overlapped>()) };
+            let index = cqe.user_data;
+            match index {
+                _ if index >= MIN_REVERSED_USERDATA as usize => (),
+                // # Safety
+                // Here we can make sure the result is valid.
+                _ => unsafe { self.ops.complete(index as _, resultify(&cqe, &entry), 0) },
+            }
+        }
+        Ok(())
+    }
+
+    fn new_op<T: OpAble>(data: T, inner: &mut IocpInner, driver: Inner) -> Op<T> {
+        Op {
+            driver,
+            index: inner.ops.insert(T::RET_IS_FD),
+            data: Some(data),
+        }
+    }
+
+    pub(crate) fn submit_with_data<T>(
+        this: &Rc<UnsafeCell<IocpInner>>,
+        data: T,
+    ) -> std::io::Result<Op<T>>
+    where
+        T: OpAble,
+    {
+        let inner = unsafe { &mut *this.get() };
+
+        // Create the operation
+        let mut op = Self::new_op(data, inner, Inner::Iocp(this.clone()));
+
+        // Configure the SQE
+        let data_mut = unsafe { op.data.as_mut().unwrap_unchecked() };
+        OpAble::iocp_op(data_mut, &inner.iocp, op.index)?;
+
+        // Submit the new operation. At this point, the operation has been
+        // pushed onto the queue and the tail pointer has been updated, so
+        // the submission entry is visible to the kernel. If there is an
+        // error here (probably EAGAIN), we still return the operation. A
+        // future `io_uring_enter` will fully submit the event.
+
+        // CHIHAI: We are not going to do syscall now. If we are waiting
+        // for IO, we will submit on `park`.
+        // let _ = inner.submit();
+        Ok(op)
+    }
+
+    pub(crate) fn poll_op(
+        this: &Rc<UnsafeCell<IocpInner>>,
+        index: usize,
+        cx: &mut Context<'_>,
+    ) -> Poll<CompletionMeta> {
+        let inner = unsafe { &mut *this.get() };
+        let lifecycle = unsafe { inner.ops.slab.get(index).unwrap_unchecked() };
+        lifecycle.poll_op(cx)
+    }
+
+    #[allow(unused_variables)]
+    pub(crate) fn drop_op<T: 'static>(
+        this: &Rc<UnsafeCell<IocpInner>>,
+        index: usize,
+        data: &mut Option<T>,
+        _skip_cancel: bool,
+    ) {
+        todo!()
+    }
+
+    #[allow(unused_variables)]
+    pub(crate) unsafe fn cancel_op(this: &Rc<UnsafeCell<IocpInner>>, index: usize) {
+        todo!()
+    }
+
+    #[cfg(feature = "sync")]
+    pub(crate) fn unpark(this: &Rc<UnsafeCell<IocpInner>>) -> UnparkHandle {
+        let inner = unsafe { &*this.get() };
+        let weak = Arc::downgrade(&inner.shared_waker);
+        UnparkHandle(weak)
+    }
+}
+
+#[cfg(feature = "iocp")]
+impl AsRawHandle for IocpDriver {
+    fn as_raw_handle(&self) -> RawHandle {
+        unsafe { (*self.inner.get()).iocp.as_raw_handle() }
+    }
+}
+
+#[cfg(feature = "iocp")]
+impl Drop for IocpDriver {
+    fn drop(&mut self) {
+        trace!("MONOIO DEBUG[IocpDriver]: drop");
+
+        #[cfg(feature = "sync")]
+        unsafe {
+            std::ptr::drop_in_place(self.eventfd_read_dst)
+        };
+
+        // Deregister thread id
+        #[cfg(feature = "sync")]
+        {
+            use crate::driver::thread::{unregister_unpark_handle, unregister_waker_sender};
+            unregister_unpark_handle(self.thread_id);
+            unregister_waker_sender(self.thread_id);
+        }
+    }
+}
+
+#[cfg(feature = "iocp")]
+impl Drop for IocpInner {
+    fn drop(&mut self) {
+        // no need to wait for completion, as the kernel will clean up the ring asynchronically.
+        unsafe {
+            ManuallyDrop::drop(&mut self.iocp);
+        }
+    }
+}
+
+#[cfg(feature = "iocp")]
+impl Ops {
+    const fn new() -> Self {
+        Ops { slab: Slab::new() }
+    }
+
+    // Insert a new operation
+    #[inline]
+    pub(crate) fn insert(&mut self, is_fd: bool) -> usize {
+        self.slab.insert(MaybeFdLifecycle::new(is_fd))
+    }
+
+    // Complete an operation
+    // # Safety
+    // Caller must make sure the result is valid.
+    #[inline]
+    unsafe fn complete(&mut self, index: usize, result: std::io::Result<u32>, flags: u32) {
+        let lifecycle = unsafe { self.slab.get(index).unwrap_unchecked() };
+        lifecycle.complete(result, flags);
+    }
+}
+
+#[cfg(feature = "iocp")]
+#[inline]
+fn resultify(cqe: &Overlapped, entry: &OVERLAPPED_ENTRY) -> std::io::Result<u32> {
+    let res = match cqe.syscall {
+        Syscall::accept => {
+            if unsafe {
+                setsockopt(
+                    cqe.socket,
+                    SOL_SOCKET,
+                    SO_UPDATE_ACCEPT_CONTEXT,
+                    std::ptr::from_ref(&cqe.from_fd).cast(),
+                    std::ffi::c_int::try_from(size_of::<SOCKET>()).expect("overflow"),
+                )
+            } == 0
+            {
+                cqe.socket.try_into().expect("result overflow")
+            } else {
+                -WSAENETDOWN
+            }
+        }
+        Syscall::recv | Syscall::WSARecv | Syscall::send | Syscall::WSASend => {
+            entry.dwNumberOfBytesTransferred.try_into().unwrap()
+        }
+    };
+
+    if res >= 0 {
+        Ok(res as u32)
+    } else {
+        Err(std::io::Error::from_raw_os_error(-res))
+    }
 }

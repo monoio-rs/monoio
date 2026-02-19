@@ -11,9 +11,9 @@ use std::{
 };
 
 use io_uring::{cqueue, opcode, types::Timespec, IoUring};
-use lifecycle::MaybeFdLifecycle;
 
 use super::{
+    lifecycle::MaybeFdLifecycle,
     op::{CompletionMeta, Op, OpAble},
     // ready::Ready,
     // scheduled_io::ScheduledIo,
@@ -24,7 +24,6 @@ use super::{
 };
 use crate::utils::slab::Slab;
 
-mod lifecycle;
 #[cfg(feature = "sync")]
 mod waker;
 #[cfg(feature = "sync")]

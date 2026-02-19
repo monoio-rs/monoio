@@ -13,7 +13,10 @@ use {
     crate::net::unix::SocketAddr as UnixSocketAddr,
     libc::{sockaddr_in, sockaddr_in6, sockaddr_storage, socklen_t, AF_INET, AF_INET6},
 };
-#[cfg(all(windows, any(feature = "legacy", feature = "poll-io")))]
+#[cfg(all(
+    windows,
+    any(feature = "legacy", feature = "iocp", feature = "poll-io")
+))]
 use {
     std::os::windows::io::AsRawSocket,
     windows_sys::Win32::Networking::WinSock::recv,

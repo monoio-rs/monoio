@@ -1,7 +1,7 @@
 use std::io;
 #[cfg(unix)]
 use std::os::unix::prelude::AsRawFd;
-#[cfg(windows)]
+#[cfg(all(windows, any(feature = "legacy", feature = "poll-io")))]
 use std::os::windows::io::AsRawHandle;
 
 #[cfg(any(feature = "legacy", feature = "poll-io"))]

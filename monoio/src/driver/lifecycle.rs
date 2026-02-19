@@ -1,4 +1,4 @@
-//! Uring state lifecycle.
+//! Uring/Iocp state lifecycle.
 //! Partly borrow from tokio-uring.
 
 use std::{
@@ -91,7 +91,7 @@ impl Ref<'_, MaybeFdLifecycle> {
         }
     }
 
-    // return if the op must has been finished
+    // return if the op must have been finished
     pub(crate) fn drop_op<T: 'static>(mut self, data: &mut Option<T>) -> bool {
         let ref_mut = &mut self.lifecycle;
         match ref_mut {

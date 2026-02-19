@@ -7,6 +7,16 @@ use std::{
 
 #[cfg(all(target_os = "linux", feature = "iouring"))]
 use io_uring::{opcode, types};
+#[cfg(all(windows, feature = "iocp"))]
+use {
+    super::{Overlapped, Syscall},
+    std::ffi::c_longlong,
+    std::io::Error,
+    windows_sys::Win32::Networking::WinSock::{
+        getsockopt, WSASocketW, SOL_SOCKET, SO_PROTOCOL_INFO, WSAENETDOWN, WSAPROTOCOL_INFOW,
+        WSA_FLAG_OVERLAPPED,
+    },
+};
 #[cfg(windows)]
 use {
     std::os::windows::prelude::AsRawSocket,
@@ -62,6 +72,75 @@ impl OpAble for Accept {
             &mut self.addr.1,
         )
         .build()
+    }
+
+    #[cfg(all(windows, feature = "iocp"))]
+    fn iocp_op(
+        &mut self,
+        iocp: &crate::driver::iocp::CompletionPort,
+        user_data: usize,
+    ) -> io::Result<()> {
+        use windows_sys::Win32::{
+            Foundation::{FALSE, HANDLE},
+            Networking::WinSock::{AcceptEx, WSAGetLastError, SOCKADDR_IN, WSA_IO_PENDING},
+        };
+        let fd = self.fd.as_raw_socket() as _;
+        unsafe {
+            let mut sock_info: WSAPROTOCOL_INFOW = std::mem::zeroed();
+            let mut sock_info_len = size_of::<WSAPROTOCOL_INFOW>()
+                .try_into()
+                .expect("sock_info_len overflow");
+            if getsockopt(
+                fd,
+                SOL_SOCKET,
+                SO_PROTOCOL_INFO,
+                std::ptr::from_mut(&mut sock_info).cast(),
+                &mut sock_info_len,
+            ) != 0
+            {
+                return Err(Error::other("get socket info failed"));
+            }
+            iocp.add_handle(user_data, fd as HANDLE)?;
+            let socket = WSASocketW(
+                sock_info.iAddressFamily,
+                sock_info.iSocketType,
+                sock_info.iProtocol,
+                &sock_info,
+                0,
+                WSA_FLAG_OVERLAPPED,
+            );
+            if INVALID_SOCKET == socket {
+                return Err(Error::other("add accept operation failed"));
+            }
+            let overlapped: &'static mut Overlapped = Box::leak(Box::default());
+            overlapped.from_fd = fd;
+            overlapped.user_data = user_data;
+            overlapped.syscall = Syscall::accept;
+            overlapped.socket = socket;
+            overlapped.result = -c_longlong::from(WSAENETDOWN);
+            // Push the new operation
+            let size = size_of::<SOCKADDR_IN>()
+                .saturating_add(16)
+                .try_into()
+                .expect("size overflow");
+            let mut buf: Vec<u8> = Vec::with_capacity(size as usize * 2);
+            while AcceptEx(
+                fd,
+                socket,
+                buf.as_mut_ptr().cast(),
+                0,
+                size,
+                size,
+                std::ptr::null_mut(),
+                std::ptr::from_mut(overlapped).cast(),
+            ) == FALSE
+            {
+                if WSA_IO_PENDING == WSAGetLastError() {
+                    break;
+                }
+            }
+            Ok(())
+        }
     }
 
     #[cfg(any(feature = "legacy", feature = "poll-io"))]

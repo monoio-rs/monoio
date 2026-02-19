@@ -29,6 +29,8 @@ struct Inner {
 enum State {
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     Uring(UringState),
+    #[cfg(all(windows, feature = "iocp"))]
+    Iocp(IocpState),
     #[cfg(feature = "legacy")]
     Legacy(Option<usize>),
 }
@@ -132,6 +134,21 @@ enum UringState {
     Legacy(Option<usize>),
 }
 
+#[cfg(all(windows, feature = "iocp"))]
+enum IocpState {
+    /// Initial state
+    Init,
+
+    /// Waiting for all in-flight operation to complete.
+    Waiting(Option<std::task::Waker>),
+
+    /// The FD is closing
+    Closing(super::op::Op<super::op::close::Close>),
+
+    /// The FD is fully closed
+    Closed,
+}
+
 #[cfg(unix)]
 impl AsRawFd for SharedFd {
     fn as_raw_fd(&self) -> RawFd {
@@ -199,11 +216,14 @@ impl SharedFd {
 
         #[cfg(all(not(feature = "legacy"), target_os = "linux", feature = "iouring"))]
         let state = State::Uring(UringState::Init);
+        #[cfg(all(not(feature = "legacy"), windows, feature = "iocp"))]
+        let state = State::Iocp(IocpState::Init);
 
         #[cfg(all(
             unix,
             feature = "legacy",
-            not(all(target_os = "linux", feature = "iouring"))
+            not(all(target_os = "linux", feature = "iouring")),
+            not(all(windows, feature = "iocp"))
         ))]
         let state = {
             let reg = CURRENT.with(|inner| match inner {
@@ -236,6 +256,7 @@ impl SharedFd {
         })
     }
 
+    #[allow(unused_variables)]
     #[cfg(windows)]
     pub(crate) fn new<const FORCE_LEGACY: bool>(fd: RawSocket) -> io::Result<SharedFd> {
         const RW_INTERESTS: mio::Interest = mio::Interest::READABLE.add(mio::Interest::WRITABLE);
@@ -243,13 +264,24 @@ impl SharedFd {
         let mut fd = RawFd::new(fd);
 
         let state = {
-            let reg = CURRENT.with(|inner| match inner {
+            let reg: io::Result<usize> = CURRENT.with(|inner| match inner {
+                #[cfg(feature = "legacy")]
                 super::Inner::Legacy(inner) => {
                     super::legacy::LegacyDriver::register(inner, &mut fd, RW_INTERESTS)
                 }
+                #[cfg(feature = "iocp")]
+                super::Inner::Iocp(_) => Ok(0),
             });
 
-            State::Legacy(Some(reg?))
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "iocp")] {
+                    State::Iocp(IocpState::Init)
+                } else if #[cfg(feature = "legacy")] {
+                    State::Legacy(Some(reg?))
+                } else {
+                    unreachable!("you need to enable 'iocp' or 'legacy' feature")
+                }
+            }
         };
 
         #[allow(unreachable_code)]
@@ -290,6 +322,9 @@ impl SharedFd {
     #[allow(unreachable_code, unused)]
     pub(crate) fn new_without_register(fd: RawSocket) -> SharedFd {
         let state = CURRENT.with(|inner| match inner {
+            #[cfg(feature = "iocp")]
+            super::Inner::Iocp(_) => State::Iocp(IocpState::Init),
+            #[cfg(feature = "legacy")]
             super::Inner::Legacy(_) => State::Legacy(None),
         });
 
@@ -369,30 +404,36 @@ impl SharedFd {
     }
 
     #[cfg(windows)]
-    /// Try unwrap Rc, then deregister if registered and return rawfd.
+    /// Try to unwrap Rc, then deregister if registered and return rawfd.
     /// Note: this action will consume self and return rawfd without closing it.
     pub(crate) fn try_unwrap(self) -> Result<RawSocket, Self> {
         match Rc::try_unwrap(self.inner) {
-            Ok(_inner) => {
-                let mut fd = _inner.fd;
+            Ok(mut _inner) => {
+                let fd = &mut _inner.fd;
                 let state = unsafe { &*_inner.state.get() };
 
-                #[allow(irrefutable_let_patterns)]
-                if let State::Legacy(idx) = state {
-                    if CURRENT.is_set() {
-                        CURRENT.with(|inner| {
-                            match inner {
-                                super::Inner::Legacy(inner) => {
-                                    // deregister it from driver(Poll and slab) and close fd
-                                    if let Some(idx) = idx {
-                                        let _ = super::legacy::LegacyDriver::deregister(
-                                            inner, *idx, &mut fd,
-                                        );
+                match state {
+                    #[cfg(feature = "legacy")]
+                    State::Legacy(idx) => {
+                        if CURRENT.is_set() {
+                            CURRENT.with(|inner| {
+                                match inner {
+                                    #[cfg(feature = "iocp")]
+                                    super::Inner::Iocp(_) => {}
+                                    super::Inner::Legacy(inner) => {
+                                        // deregister it from driver(Poll and slab) and close fd
+                                        if let Some(idx) = idx {
+                                            let _ = super::legacy::LegacyDriver::deregister(
+                                                inner, *idx, fd,
+                                            );
+                                        }
                                     }
                                 }
-                            }
-                        })
+                            })
+                        }
                     }
+                    #[cfg(feature = "iocp")]
+                    State::Iocp(_) => {}
                 }
                 Ok(fd.socket)
             }
@@ -408,6 +449,8 @@ impl SharedFd {
             State::Uring(UringState::Legacy(s)) => *s,
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             State::Uring(_) => None,
+            #[cfg(all(windows, feature = "iocp"))]
+            State::Iocp(_) => None,
             #[cfg(feature = "legacy")]
             State::Legacy(s) => *s,
             #[cfg(all(
@@ -516,23 +559,29 @@ impl Inner {
     }
 }
 
-#[cfg(unix)]
 impl Drop for Inner {
     fn drop(&mut self) {
-        let fd = self.fd;
+        let fd = &mut self.fd;
         let state = unsafe { &mut *self.state.get() };
         #[allow(unreachable_patterns)]
         match state {
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             State::Uring(UringState::Init) | State::Uring(UringState::Waiting(..)) => {
-                if super::op::Op::close(fd).is_err() {
-                    let _ = unsafe { std::fs::File::from_raw_fd(fd) };
+                if super::op::Op::close(*fd).is_err() {
+                    let _ = unsafe { std::fs::File::from_raw_fd(*fd) };
+                };
+            }
+            #[cfg(all(windows, feature = "iocp"))]
+            State::Iocp(IocpState::Init) | State::Iocp(IocpState::Waiting(..)) => {
+                if super::op::Op::close(fd.socket).is_err() {
+                    use std::os::windows::io::FromRawHandle;
+                    let _ = unsafe { std::fs::File::from_raw_handle(fd.socket as _) };
                 };
             }
             #[cfg(feature = "legacy")]
             State::Legacy(idx) => drop_legacy(fd, *idx),
             #[cfg(all(target_os = "linux", feature = "iouring", feature = "poll-io"))]
-            State::Uring(UringState::Legacy(idx)) => drop_uring_legacy(fd, *idx),
+            State::Uring(UringState::Legacy(idx)) => drop_uring_legacy(*fd, *idx),
             _ => {}
         }
     }
@@ -540,7 +589,7 @@ impl Drop for Inner {
 
 #[allow(unused_mut)]
 #[cfg(feature = "legacy")]
-fn drop_legacy(mut fd: RawFd, idx: Option<usize>) {
+fn drop_legacy(fd: &mut RawFd, idx: Option<usize>) {
     if CURRENT.is_set() {
         CURRENT.with(|inner| {
             #[cfg(any(all(target_os = "linux", feature = "iouring"), feature = "legacy"))]
@@ -549,23 +598,27 @@ fn drop_legacy(mut fd: RawFd, idx: Option<usize>) {
                 super::Inner::Uring(_) => {
                     unreachable!("close legacy fd with uring runtime")
                 }
+                #[cfg(all(windows, feature = "iocp"))]
+                super::Inner::Iocp(_) => {
+                    unreachable!("close legacy fd with iocp runtime")
+                }
                 super::Inner::Legacy(inner) => {
                     // deregister it from driver(Poll and slab) and close fd
                     #[cfg(not(windows))]
                     if let Some(idx) = idx {
-                        let mut source = mio::unix::SourceFd(&fd);
+                        let mut source = mio::unix::SourceFd(fd);
                         let _ = super::legacy::LegacyDriver::deregister(inner, idx, &mut source);
                     }
                     #[cfg(windows)]
                     if let Some(idx) = idx {
-                        let _ = super::legacy::LegacyDriver::deregister(inner, idx, &mut fd);
+                        let _ = super::legacy::LegacyDriver::deregister(inner, idx, fd);
                     }
                 }
             }
         })
     }
     #[cfg(all(unix, feature = "legacy"))]
-    let _ = unsafe { std::fs::File::from_raw_fd(fd) };
+    let _ = unsafe { std::fs::File::from_raw_fd(*fd) };
     #[cfg(all(windows, feature = "legacy"))]
     let _ = unsafe { OwnedSocket::from_raw_socket(fd.socket) };
 }
@@ -579,6 +632,8 @@ fn drop_uring_legacy(fd: RawFd, idx: Option<usize>) {
                 super::Inner::Legacy(_) => {
                     unreachable!("close uring fd with legacy runtime")
                 }
+                #[cfg(all(windows, feature = "iocp"))]
+                super::Inner::Iocp(inner) => {}
                 #[cfg(all(target_os = "linux", feature = "iouring"))]
                 super::Inner::Uring(inner) => {
                     // deregister it from driver(Poll and slab) and close fd

@@ -138,13 +138,56 @@ impl Drop for MaybeFd {
     }
 }
 
+#[cfg(all(windows, feature = "iocp"))]
+#[allow(non_camel_case_types)]
+pub(crate) enum Syscall {
+    accept,
+    recv,
+    WSARecv,
+    send,
+    WSASend,
+}
+
+#[cfg(all(windows, feature = "iocp"))]
+pub(crate) struct Overlapped {
+    /// The base [`OVERLAPPED`].
+    pub(crate) base: windows_sys::Win32::System::IO::OVERLAPPED,
+    pub(crate) from_fd: windows_sys::Win32::Networking::WinSock::SOCKET,
+    pub(crate) user_data: usize,
+    pub(crate) syscall: Syscall,
+    pub(crate) socket: windows_sys::Win32::Networking::WinSock::SOCKET,
+    pub(crate) result: std::ffi::c_longlong,
+}
+
+#[cfg(all(windows, feature = "iocp"))]
+impl Default for Overlapped {
+    fn default() -> Self {
+        unsafe { std::mem::zeroed() }
+    }
+}
+
 pub(crate) trait OpAble {
-    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    #[cfg(any(
+        all(target_os = "linux", feature = "iouring"),
+        all(windows, feature = "iocp")
+    ))]
     const RET_IS_FD: bool = false;
-    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    #[cfg(any(
+        all(target_os = "linux", feature = "iouring"),
+        all(windows, feature = "iocp")
+    ))]
     const SKIP_CANCEL: bool = false;
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     fn uring_op(&mut self) -> io_uring::squeue::Entry;
+
+    #[cfg(all(windows, feature = "iocp"))]
+    fn iocp_op(
+        &mut self,
+        _iocp: &crate::driver::iocp::CompletionPort,
+        _user_data: usize,
+    ) -> io::Result<()> {
+        Err(io::Error::other("iocp is not implemented yet"))
+    }
 
     #[cfg(any(feature = "legacy", feature = "poll-io"))]
     fn legacy_interest(&self) -> Option<(super::ready::Direction, usize)>;
@@ -248,7 +291,10 @@ where
     }
 }
 
-#[cfg(all(target_os = "linux", feature = "iouring"))]
+#[cfg(any(
+    all(target_os = "linux", feature = "iouring"),
+    all(windows, feature = "iocp")
+))]
 impl<T: OpAble> Drop for Op<T> {
     #[inline]
     fn drop(&mut self) {
@@ -259,14 +305,14 @@ impl<T: OpAble> Drop for Op<T> {
 
 /// Check if current driver is legacy.
 #[allow(unused)]
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 #[inline]
 pub const fn is_legacy() -> bool {
     true
 }
 
 /// Check if current driver is legacy.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 #[inline]
 pub fn is_legacy() -> bool {
     super::CURRENT.with(|inner| inner.is_legacy())

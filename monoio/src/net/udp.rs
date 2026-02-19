@@ -40,9 +40,10 @@ impl UdpSocket {
     #[cfg(feature = "legacy")]
     fn set_non_blocking(_socket: &socket2::Socket) -> io::Result<()> {
         crate::driver::CURRENT.with(|x| match x {
-            // TODO: windows ioring support
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             crate::driver::Inner::Uring(_) => Ok(()),
+            #[cfg(all(windows, feature = "iocp"))]
+            crate::driver::Inner::Iocp(_) => Ok(()),
             crate::driver::Inner::Legacy(_) => _socket.set_nonblocking(true),
         })
     }

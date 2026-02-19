@@ -41,6 +41,13 @@ if [ "${NO_RUN}" != "1" ] && [ "${NO_RUN}" != "true" ]; then
         "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iouring,macros,utils" --release
     fi
 
+    if [ "${OS}" = "windows-latest" ]; then
+        # only enabled iocp driver
+        # todo test it
+        "${CARGO}" build --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iocp,macros,utils"
+        "${CARGO}" build --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iocp,macros,utils" --release
+    fi
+
     if [ "${TARGET}" != "aarch64-unknown-linux-gnu" ] && [ "${TARGET}" != "armv7-unknown-linux-gnueabihf" ] &&
         [ "${TARGET}" != "riscv64gc-unknown-linux-gnu" ] && [ "${TARGET}" != "s390x-unknown-linux-gnu" ] &&
         [ "${TARGET}" != "loongarch64-unknown-linux-gnu" ]; then

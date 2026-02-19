@@ -36,6 +36,7 @@ struct Configuration {
 enum DriverType {
     Legacy,
     Uring,
+    Iocp,
     Fusion,
 }
 
@@ -137,6 +138,7 @@ fn parse_driver(lit: syn::Lit, span: Span, field: &str) -> Result<DriverType, sy
     match val.as_str() {
         "legacy" => Ok(DriverType::Legacy),
         "uring" | "io_uring" | "iouring" => Ok(DriverType::Uring),
+        "cp" | "iocp" => Ok(DriverType::Iocp),
         "fusion" | "auto" | "detect" => Ok(DriverType::Fusion),
         _ => Err(syn::Error::new(
             span,
@@ -260,6 +262,9 @@ fn parse_knobs(mut input: syn::ItemFn, is_test: bool, config: FinalConfig) -> To
         DriverType::Uring => {
             quote_spanned! {last_stmt_start_span=>monoio::RuntimeBuilder::<monoio::IoUringDriver>::new()}
         }
+        DriverType::Iocp => {
+            quote_spanned! {last_stmt_start_span=>monoio::RuntimeBuilder::<monoio::IocpDriver>::new()}
+        }
         DriverType::Fusion => {
             quote_spanned! {last_stmt_start_span=>monoio::RuntimeBuilder::<monoio::FusionDriver>::new()}
         }
@@ -356,6 +361,9 @@ fn parse_knobs(mut input: syn::ItemFn, is_test: bool, config: FinalConfig) -> To
             },
             DriverType::Uring => quote! {
                 #[cfg(all(target_os = "linux", feature = "iouring"))]
+            },
+            DriverType::Iocp => quote! {
+                #[cfg(all(windows, feature = "iocp"))]
             },
             DriverType::Fusion => quote! {
                 #[cfg(any(feature = "legacy", feature = "iouring"))]
@@ -465,6 +473,15 @@ pub(crate) fn test_all(args: TokenStream, item: TokenStream) -> TokenStream {
     config.driver = DriverType::Uring;
     let token_uring = parse_knobs(input_uring, true, config);
     output.extend(token_uring);
+
+    let mut input_legacy = input.clone();
+    input_legacy.sig.ident = proc_macro2::Ident::new(
+        &format!("legacy_{}", input_legacy.sig.ident),
+        input_legacy.sig.ident.span(),
+    );
+    config.driver = DriverType::Iocp;
+    let token_legacy = parse_knobs(input_legacy, true, config);
+    output.extend(token_legacy);
 
     let mut input_legacy = input;
     input_legacy.sig.ident = proc_macro2::Ident::new(

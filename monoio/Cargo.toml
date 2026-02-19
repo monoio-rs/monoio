@@ -45,7 +45,9 @@ windows-sys = { version = "0.48.0", features = [
     "Win32_System_IO",
     "Win32_Storage_FileSystem",
     "Win32_Security",
+    "Win32_System_WindowsProgramming",
 ] }
+cfg-if = "1.0.0"
 
 # unix dependencies
 [target.'cfg(unix)'.dependencies]
@@ -88,8 +90,12 @@ utils = ["nix"]
 debug = ["tracing"]
 # enable legacy driver support(will make monoio available for older kernel and macOS)
 legacy = ["mio"]
-# iouring support
+# io_uring support for linux
 iouring = ["io-uring"]
+# iocp support for windows
+iocp = ["mio"]
+# Provide completion IO adaptation
+completion_io = ["iouring", "iocp"]
 # tokio-compatible(only have effect when legacy is enabled and iouring is not)
 tokio-compat = ["tokio"]
 # (experimental)enable poll-io to convert structs to structs that impl tokio's poll io
