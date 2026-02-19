@@ -248,6 +248,271 @@ impl AsRawSocket for UdpSocket {
     }
 }
 
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+mod multishot_impl {
+    use std::io;
+
+    use super::UdpSocket;
+    use crate::{
+        buf::{RecvMsgParser, RecvMsgRingBuf, RingBuf},
+        driver::op::{
+            recv_multishot::{RecvMsgMultishotOp, RecvMultishotOp},
+            MultishotOp,
+        },
+        io::{is_operation_canceled, AssociateGuard, CancelHandle},
+    };
+
+    /// Multishot recv for connected sockets.
+    ///
+    /// Call [`stream()`](Self::stream) to get a [`RecvMultishotStream`] for receiving buffers.
+    pub struct RecvMultishot<R: RingBuf + Unpin + 'static> {
+        ring: R,
+        op: MultishotOp<RecvMultishotOp>,
+        cancellation_guard: Option<AssociateGuard>,
+    }
+
+    /// Stream for receiving buffers from a [`RecvMultishot`] operation.
+    ///
+    /// Holds a mutable borrow of the parent, preventing concurrent polling.
+    /// Buffers returned by `next()` can be held across multiple calls.
+    pub struct RecvMultishotStream<'a, R: RingBuf + Unpin + 'static> {
+        ring: &'a R,
+        op: &'a mut MultishotOp<RecvMultishotOp>,
+        cancellation_guard: &'a Option<AssociateGuard>,
+    }
+
+    impl<R: RingBuf + Unpin + 'static> RecvMultishot<R> {
+        /// Creates a stream for receiving buffers.
+        ///
+        /// The stream holds a mutable borrow, preventing concurrent polling.
+        /// Buffers returned by the stream can outlive individual `next()` calls.
+        #[inline]
+        pub fn stream(&mut self) -> RecvMultishotStream<'_, R> {
+            RecvMultishotStream {
+                ring: &self.ring,
+                op: &mut self.op,
+                cancellation_guard: &self.cancellation_guard,
+            }
+        }
+
+        /// Returns whether the multishot operation has terminated.
+        #[inline]
+        pub fn is_terminated(&self) -> bool {
+            self.op.is_terminated()
+        }
+
+        /// Attempts to consume and return the buffer ring.
+        ///
+        /// Returns `Ok(ring)` if the multishot operation has terminated.
+        /// Returns `Err(self)` if the operation is still in progress.
+        pub fn try_into_ring(self) -> Result<R, Self> {
+            if self.op.is_terminated() {
+                Ok(self.ring)
+            } else {
+                Err(self)
+            }
+        }
+    }
+
+    impl<'a, R: RingBuf + Unpin + 'static> RecvMultishotStream<'a, R> {
+        /// Receives the next buffer.
+        ///
+        /// Returns `None` when the operation is terminated or cancelled.
+        /// The returned buffer has lifetime `'a`, allowing multiple buffers
+        /// to be held simultaneously across `next()` calls.
+        pub async fn next(&mut self) -> Option<io::Result<R::Buffer<'a>>> {
+            let completion = match self.op.poll_next_async().await? {
+                Ok(c) => c,
+                Err(e) => {
+                    if self.cancellation_guard.is_some() && is_operation_canceled(&e) {
+                        return None;
+                    }
+                    return Some(Err(e));
+                }
+            };
+
+            let buf_id = match completion.buffer_id() {
+                Some(id) => id,
+                None => {
+                    return Some(Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "multishot completion missing buffer ID",
+                    )))
+                }
+            };
+
+            let len = completion.value.into_inner() as usize;
+            Some(Ok(unsafe { self.ring.get_buf(buf_id, len) }))
+        }
+    }
+
+    /// Multishot recvmsg yielding `(Address, Buffer)` pairs.
+    ///
+    /// Call [`stream()`](Self::stream) to get a [`RecvMsgMultishotStream`] for receiving messages.
+    pub struct RecvMsgMultishot<R: RecvMsgRingBuf + Unpin + 'static> {
+        ring: R,
+        op: MultishotOp<RecvMsgMultishotOp>,
+        cancellation_guard: Option<AssociateGuard>,
+    }
+
+    /// Stream for receiving messages from a [`RecvMsgMultishot`] operation.
+    ///
+    /// Holds a mutable borrow of the parent, preventing concurrent polling.
+    /// Buffers returned by `next()` can be held across multiple calls.
+    pub struct RecvMsgMultishotStream<'a, R: RecvMsgRingBuf + Unpin + 'static> {
+        ring: &'a R,
+        op: &'a mut MultishotOp<RecvMsgMultishotOp>,
+        cancellation_guard: &'a Option<AssociateGuard>,
+    }
+
+    impl<R: RecvMsgRingBuf + Unpin + 'static> RecvMsgMultishot<R> {
+        /// Creates a stream for receiving messages.
+        ///
+        /// The stream holds a mutable borrow, preventing concurrent polling.
+        /// Buffers returned by the stream can outlive individual `next()` calls.
+        #[inline]
+        pub fn stream(&mut self) -> RecvMsgMultishotStream<'_, R> {
+            RecvMsgMultishotStream {
+                ring: &self.ring,
+                op: &mut self.op,
+                cancellation_guard: &self.cancellation_guard,
+            }
+        }
+
+        /// Returns whether the multishot operation has terminated.
+        #[inline]
+        pub fn is_terminated(&self) -> bool {
+            self.op.is_terminated()
+        }
+
+        /// Attempts to consume and return the buffer ring.
+        ///
+        /// Returns `Ok(ring)` if the multishot operation has terminated.
+        /// Returns `Err(self)` if the operation is still in progress.
+        pub fn try_into_ring(self) -> Result<R, Self> {
+            if self.op.is_terminated() {
+                Ok(self.ring)
+            } else {
+                Err(self)
+            }
+        }
+    }
+
+    impl<'a, R: RecvMsgRingBuf + Unpin + 'static> RecvMsgMultishotStream<'a, R> {
+        /// Receives the next `(address, buffer)` pair.
+        ///
+        /// Returns `None` when the operation is terminated or cancelled.
+        pub async fn next(
+            &mut self,
+        ) -> Option<io::Result<(<R::Parser as RecvMsgParser>::Address, R::Buffer<'a>)>> {
+            let completion = match self.op.poll_next_async().await? {
+                Ok(c) => c,
+                Err(e) => {
+                    if self.cancellation_guard.is_some() && is_operation_canceled(&e) {
+                        return None;
+                    }
+                    return Some(Err(e));
+                }
+            };
+
+            let buf_id = match completion.buffer_id() {
+                Some(id) => id,
+                None => {
+                    return Some(Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "multishot completion missing buffer ID",
+                    )))
+                }
+            };
+
+            let total_len = completion.value.into_inner() as usize;
+            let msghdr: &libc::msghdr = &self.op.data().expect("op data").msghdr;
+
+            let (addr, buf) = match unsafe { self.ring.parse_recvmsg(buf_id, total_len, msghdr) } {
+                Ok(result) => result,
+                Err(e) => return Some(Err(e)),
+            };
+
+            Some(Ok((addr, buf)))
+        }
+    }
+
+    impl UdpSocket {
+        /// Multishot recv for connected sockets. Socket must be connected first.
+        pub fn recv_multishot<R: RingBuf + Unpin + 'static>(
+            &self,
+            ring: R,
+        ) -> io::Result<RecvMultishot<R>> {
+            let buf_count = ring.buffer_count();
+            let bgid = ring.bgid();
+            let op = RecvMultishotOp::new(self.fd.clone(), bgid);
+            let op = MultishotOp::new(op, buf_count)?;
+            Ok(RecvMultishot {
+                ring,
+                op,
+                cancellation_guard: None,
+            })
+        }
+
+        /// Multishot recv with cancellation support.
+        pub fn cancelable_recv_multishot<R: RingBuf + Unpin + 'static>(
+            &self,
+            ring: R,
+            c: CancelHandle,
+        ) -> io::Result<RecvMultishot<R>> {
+            let buf_count = ring.buffer_count();
+            let bgid = ring.bgid();
+            let op = RecvMultishotOp::new(self.fd.clone(), bgid);
+            let op = MultishotOp::new(op, buf_count)?;
+            let cancellation_guard = c.associate_op(op.op_canceller());
+            Ok(RecvMultishot {
+                ring,
+                op,
+                cancellation_guard: Some(cancellation_guard),
+            })
+        }
+
+        /// Multishot recvmsg returning sender address and payload.
+        pub fn recvmsg_multishot<R: RecvMsgRingBuf + Unpin + 'static>(
+            &self,
+            ring: R,
+        ) -> io::Result<RecvMsgMultishot<R>> {
+            let buf_count = ring.buffer_count();
+            let bgid = ring.bgid();
+            let op = RecvMsgMultishotOp::new::<R::Parser>(self.fd.clone(), bgid);
+            let op = MultishotOp::new(op, buf_count)?;
+            Ok(RecvMsgMultishot {
+                ring,
+                op,
+                cancellation_guard: None,
+            })
+        }
+
+        /// Multishot recvmsg with cancellation support.
+        pub fn cancelable_recvmsg_multishot<R: RecvMsgRingBuf + Unpin + 'static>(
+            &self,
+            ring: R,
+            c: CancelHandle,
+        ) -> io::Result<RecvMsgMultishot<R>> {
+            let buf_count = ring.buffer_count();
+            let bgid = ring.bgid();
+            let op = RecvMsgMultishotOp::new::<R::Parser>(self.fd.clone(), bgid);
+            let op = MultishotOp::new(op, buf_count)?;
+            let cancellation_guard = c.associate_op(op.op_canceller());
+            Ok(RecvMsgMultishot {
+                ring,
+                op,
+                cancellation_guard: Some(cancellation_guard),
+            })
+        }
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+pub use multishot_impl::{
+    RecvMsgMultishot, RecvMsgMultishotStream, RecvMultishot, RecvMultishotStream,
+};
+
 /// Cancelable related methods
 impl UdpSocket {
     /// Receives a single datagram message on the socket. On success, returns the number

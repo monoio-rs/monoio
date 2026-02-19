@@ -24,6 +24,14 @@ pub(crate) use vec_wrapper::{read_vec_meta, write_vec_meta, IoVecMeta};
 mod msg;
 pub use msg::{MsgBuf, MsgBufMut, MsgMeta};
 
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+mod ring_buf;
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+pub use ring_buf::{
+    AnyRecvMsgParser, Ipv4RecvMsgParser, Ipv6RecvMsgParser, RawBuffer, RecvMsgParser,
+    RecvMsgRingBuf, RingBuf, UserRecvMsgRingBuf, UserRingBuf, UserRingBufBuilder,
+};
+
 pub(crate) fn deref(buf: &impl IoBuf) -> &[u8] {
     // Safety: the `IoBuf` trait is marked as unsafe and is expected to be
     // implemented correctly.

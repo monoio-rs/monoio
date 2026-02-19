@@ -17,6 +17,8 @@ mod fsync;
 mod open;
 mod poll;
 mod recv;
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+pub(crate) mod recv_multishot;
 mod send;
 #[cfg(unix)]
 mod statx;
@@ -143,6 +145,8 @@ pub(crate) trait OpAble {
     const RET_IS_FD: bool = false;
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     const SKIP_CANCEL: bool = false;
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    const MULTISHOT: bool = false;
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     fn uring_op(&mut self) -> io_uring::squeue::Entry;
 
@@ -282,5 +286,127 @@ pub(crate) struct OpCanceller {
 impl OpCanceller {
     pub(crate) unsafe fn cancel(&self) {
         super::CURRENT.with(|inner| inner.cancel_op(self))
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+pub(crate) use multishot::*;
+
+#[cfg(all(target_os = "linux", feature = "iouring"))]
+mod multishot {
+    use std::{io, task::Poll};
+
+    use super::{driver, MaybeFd, OpAble};
+    use crate::driver::uring::lifecycle::{MultishotPollResult, IORING_CQE_F_BUFFER};
+
+    #[derive(Debug)]
+    pub(crate) struct MultishotCompletion {
+        pub(crate) value: MaybeFd,
+        pub(crate) flags: u32,
+    }
+
+    impl MultishotCompletion {
+        #[inline]
+        pub(crate) fn buffer_id(&self) -> Option<u16> {
+            if self.flags & IORING_CQE_F_BUFFER != 0 {
+                Some((self.flags >> 16) as u16)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub(crate) struct MultishotOp<T: OpAble + Unpin + 'static> {
+        driver: driver::Inner,
+        index: usize,
+        data: Option<T>,
+    }
+
+    impl<T: OpAble + Unpin + 'static> MultishotOp<T> {
+        pub(crate) fn new(mut data: T, queue_capacity: usize) -> io::Result<Self> {
+            let driver = driver::CURRENT.with(|inner| inner.clone());
+            let index = driver.submit_multishot_with(&mut data, queue_capacity)?;
+
+            Ok(Self {
+                driver,
+                index,
+                data: Some(data),
+            })
+        }
+
+        pub(crate) fn is_terminated(&self) -> bool {
+            self.index == usize::MAX
+        }
+
+        pub(crate) fn data(&self) -> Option<&T> {
+            self.data.as_ref()
+        }
+
+        pub(crate) fn data_mut(&mut self) -> Option<&mut T> {
+            self.data.as_mut()
+        }
+
+        pub(crate) fn take_data(&mut self) -> Option<T> {
+            self.data.take()
+        }
+
+        pub(crate) fn op_canceller(&self) -> super::OpCanceller {
+            super::OpCanceller {
+                index: self.index,
+                #[cfg(feature = "legacy")]
+                direction: None,
+            }
+        }
+
+        pub(crate) fn poll_next(
+            &mut self,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<Option<io::Result<MultishotCompletion>>> {
+            if self.index == usize::MAX {
+                return Poll::Ready(None);
+            }
+
+            match self.driver.poll_multishot_op(self.index, cx) {
+                MultishotPollResult::Ready(cqe) => {
+                    let completion = cqe.result.map(|value| MultishotCompletion {
+                        value,
+                        flags: cqe.flags,
+                    });
+                    Poll::Ready(Some(completion))
+                }
+
+                MultishotPollResult::Terminated(cqe) => {
+                    self.driver.remove_op(self.index);
+                    self.index = usize::MAX;
+
+                    let completion = cqe.result.map(|value| MultishotCompletion {
+                        value,
+                        flags: cqe.flags,
+                    });
+                    Poll::Ready(Some(completion))
+                }
+
+                MultishotPollResult::Done => {
+                    self.driver.remove_op(self.index);
+                    self.index = usize::MAX;
+                    Poll::Ready(None)
+                }
+
+                MultishotPollResult::Pending => Poll::Pending,
+            }
+        }
+
+        pub(crate) async fn poll_next_async(&mut self) -> Option<io::Result<MultishotCompletion>> {
+            std::future::poll_fn(|cx| self.poll_next(cx)).await
+        }
+    }
+
+    impl<T: OpAble + Unpin + 'static> Drop for MultishotOp<T> {
+        fn drop(&mut self) {
+            if self.index != usize::MAX {
+                self.driver
+                    .drop_op(self.index, &mut self.data, T::SKIP_CANCEL);
+            }
+        }
     }
 }

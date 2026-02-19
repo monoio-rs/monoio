@@ -89,5 +89,9 @@ impl Drop for AssociateGuard {
 }
 
 pub(crate) fn operation_canceled() -> std::io::Error {
-    std::io::Error::from_raw_os_error(125)
+    std::io::Error::from_raw_os_error(libc::ECANCELED)
+}
+
+pub(crate) fn is_operation_canceled(e: &std::io::Error) -> bool {
+    e.raw_os_error() == Some(libc::ECANCELED)
 }
