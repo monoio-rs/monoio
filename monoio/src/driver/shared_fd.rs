@@ -524,10 +524,10 @@ impl Drop for Inner {
         #[allow(unreachable_patterns)]
         match state {
             #[cfg(all(target_os = "linux", feature = "iouring"))]
-            State::Uring(UringState::Init) | State::Uring(UringState::Waiting(..)) => {
-                if super::op::Op::close(fd).is_err() {
-                    let _ = unsafe { std::fs::File::from_raw_fd(fd) };
-                };
+            State::Uring(UringState::Init) | State::Uring(UringState::Waiting(..))
+                if super::op::Op::close(fd).is_err() =>
+            {
+                let _ = unsafe { std::fs::File::from_raw_fd(fd) };
             }
             #[cfg(feature = "legacy")]
             State::Legacy(idx) => drop_legacy(fd, *idx),
