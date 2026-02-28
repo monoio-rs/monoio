@@ -8,7 +8,9 @@ async fn zero_copy_for_tcp() {
     };
 
     const MSG: &[u8] = b"copy for split";
-    let srv = monoio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let srv = monoio::net::TcpListener::async_bind("127.0.0.1:0")
+        .await
+        .unwrap();
     let (mut c_tx, mut c_rx) = local_sync::oneshot::channel::<()>();
     let addr = srv.local_addr().unwrap();
     monoio::spawn(async move {
@@ -43,7 +45,9 @@ async fn zero_copy_for_uds() {
         .tempdir()
         .unwrap();
     let sock_path = dir.path().join("zero_copy.sock");
-    let srv = monoio::net::UnixListener::bind(&sock_path).await.unwrap();
+    let srv = monoio::net::UnixListener::async_bind(&sock_path)
+        .await
+        .unwrap();
     let (mut c_tx, mut c_rx) = local_sync::oneshot::channel::<()>();
     monoio::spawn(async move {
         let stream = UnixStream::connect(&sock_path).await.unwrap();

@@ -5,7 +5,7 @@ use monoio::{
 
 #[monoio::test_all]
 async fn ensure_buf_writter_write_properly() {
-    let srv = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let srv = TcpListener::async_bind("127.0.0.1:0").await.unwrap();
     let addr = srv.local_addr().unwrap();
 
     monoio::spawn(async move {

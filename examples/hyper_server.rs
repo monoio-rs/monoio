@@ -17,7 +17,7 @@ where
     E: std::error::Error + 'static + Send + Sync,
     A: Into<SocketAddr>,
 {
-    let listener = TcpListener::bind(addr.into()).await?;
+    let listener = TcpListener::async_bind(addr.into()).await?;
     loop {
         let (stream, _) = listener.accept().await?;
         let stream_poll = monoio_compat::hyper::MonoioIo::new(stream.into_poll_io()?);

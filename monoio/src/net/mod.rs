@@ -42,7 +42,7 @@ pub(crate) async fn new_socket(
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    let socket_type = socket_type | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC;
+    let socket_type = socket_type.cloexec().nonblocking();
 
     #[cfg(target_os = "linux")]
     let socket_type = {

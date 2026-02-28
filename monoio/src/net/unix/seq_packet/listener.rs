@@ -23,7 +23,26 @@ pub struct UnixSeqpacketListener {
 
 impl UnixSeqpacketListener {
     /// Creates a new `UnixSeqpacketListener` bound to the specified path with custom backlog
-    pub async fn bind_with_backlog<P: AsRef<Path>>(
+    pub fn bind_with_backlog<P: AsRef<Path>>(path: P, backlog: libc::c_int) -> io::Result<Self> {
+        let addr = socket2::SockAddr::unix(path)?;
+        let socket = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::SEQPACKET, None)?;
+
+        #[cfg(feature = "legacy")]
+        if crate::driver::op::is_legacy() {
+            socket.set_nonblocking(true)?;
+        }
+
+        socket.bind(&addr)?;
+        socket.listen(backlog)?;
+
+        Ok(Self {
+            fd: SharedFd::new::<false>(socket.into_raw_fd())?,
+        })
+    }
+
+    /// Creates a new `UnixSeqpacketListener` bound to the specified path with custom backlog
+    /// asynchronously.
+    pub async fn async_bind_with_backlog<P: AsRef<Path>>(
         path: P,
         backlog: libc::c_int,
     ) -> io::Result<Self> {
@@ -58,8 +77,15 @@ impl UnixSeqpacketListener {
 
     /// Creates a new `UnixSeqpacketListener` bound to the specified path with default backlog(128)
     #[inline]
-    pub async fn bind<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        Self::bind_with_backlog(path, DEFAULT_BACKLOG).await
+    pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        Self::bind_with_backlog(path, DEFAULT_BACKLOG)
+    }
+
+    /// Creates a new `UnixSeqpacketListener` bound to the specified path with default backlog(128)
+    /// asynchronously.
+    #[inline]
+    pub async fn async_bind<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        Self::async_bind_with_backlog(path, DEFAULT_BACKLOG).await
     }
 
     /// Accept a UnixSeqpacket

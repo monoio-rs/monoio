@@ -11,7 +11,7 @@ use monoio::{
 #[monoio::main(driver = "fusion")]
 async fn main() {
     // tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).init();
-    let listener = TcpListener::bind("127.0.0.1:50002").await.unwrap();
+    let listener = TcpListener::async_bind("127.0.0.1:50002").await.unwrap();
     println!("listening");
     loop {
         let incoming = listener.accept().await;

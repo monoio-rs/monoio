@@ -12,7 +12,7 @@ macro_rules! test_connect_ip {
         $(
             #[monoio::test_all]
             async fn $ident() {
-                let listener = TcpListener::bind($target).await.unwrap();
+                let listener = TcpListener::async_bind($target).await.unwrap();
                 let addr = listener.local_addr().unwrap();
                 assert!($addr_f(&addr));
 
@@ -57,7 +57,7 @@ macro_rules! test_connect {
         $(
             #[monoio::test_all]
             async fn $ident() {
-                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let listener = TcpListener::async_bind("127.0.0.1:0").await.unwrap();
                 let addr = $mapping(&listener);
 
                 let server = async {

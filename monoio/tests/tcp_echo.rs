@@ -9,7 +9,7 @@ async fn echo_server() {
 
     let (tx, rx) = local_sync::oneshot::channel();
 
-    let srv = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let srv = TcpListener::async_bind("127.0.0.1:0").await.unwrap();
     let addr = srv.local_addr().unwrap();
 
     let msg = "foo bar baz";
@@ -68,7 +68,7 @@ async fn echo_server() {
 
 #[monoio::test_all(timer_enabled = true)]
 async fn rw_able() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = TcpListener::async_bind("127.0.0.1:0").await.unwrap();
     let listener_addr = listener.local_addr().unwrap();
 
     monoio::select! {
@@ -106,7 +106,7 @@ async fn echo_tfo() {
 
     let bind_addr = "127.0.0.1:0".parse::<SocketAddr>().unwrap();
     let opts = monoio::net::ListenerOpts::default().tcp_fast_open(true);
-    let listener = TcpListener::bind_with_config(bind_addr, &opts)
+    let listener = TcpListener::async_bind_with_config(bind_addr, &opts)
         .await
         .unwrap();
     let addr = listener.local_addr().unwrap();

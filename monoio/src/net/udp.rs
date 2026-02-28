@@ -48,7 +48,34 @@ impl UdpSocket {
     }
 
     /// Creates a UDP socket from the given address.
-    pub async fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+    pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+        let addr = addr
+            .to_socket_addrs()?
+            .next()
+            .ok_or_else(|| io::Error::other("empty address"))?;
+        let domain = if addr.is_ipv6() {
+            socket2::Domain::IPV6
+        } else {
+            socket2::Domain::IPV4
+        };
+        let socket =
+            socket2::Socket::new(domain, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
+        #[cfg(feature = "legacy")]
+        Self::set_non_blocking(&socket)?;
+
+        let addr = socket2::SockAddr::from(addr);
+        socket.bind(&addr)?;
+
+        #[cfg(unix)]
+        let fd = socket.into_raw_fd();
+        #[cfg(windows)]
+        let fd = socket.into_raw_socket();
+
+        Ok(Self::from_shared_fd(SharedFd::new::<false>(fd)?))
+    }
+
+    /// Creates a UDP socket from the given address asynchronously.
+    pub async fn async_bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
         let addr = addr
             .to_socket_addrs()?
             .next()

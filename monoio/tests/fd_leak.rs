@@ -22,7 +22,9 @@ use monoio::io::AsyncReadRentExt;
 #[monoio::test_all(timer_enabled = true)]
 async fn test_fd_leak_cancel_fail() {
     // step 1 and 2
-    let listener = monoio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = monoio::net::TcpListener::async_bind("127.0.0.1:0")
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
     let mut incoming = listener.accept();
     let fut = unsafe { std::pin::Pin::new_unchecked(&mut incoming) };
@@ -84,7 +86,9 @@ async fn test_fd_leak_cancel_fail() {
 #[cfg(feature = "async-cancel")]
 #[monoio::test_all(timer_enabled = true)]
 async fn test_fd_leak_try_cancel() {
-    let listener = monoio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = monoio::net::TcpListener::async_bind("127.0.0.1:0")
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
     let incoming = listener.accept();
     assert!(monoio::select! {
