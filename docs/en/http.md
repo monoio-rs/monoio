@@ -77,18 +77,27 @@ async fn hyper_handler(req: Request<Body>) -> Result<Response<Body>, std::conver
 
 The client's implementation involves how to create a connection. This is also strongly coupled by Runtime, so hyper provides the `Connector` abstraction, which is defined as a Tower Service, which receives `hyper::Uri` and returns the implementation `tokio::io::AsyncRead + The future of tokio::io::AsyncWrite + hyper::client::connect::Connection` (that is, connection in a broad sense).
 
-We implement `HyperConnection` based on `monoio_compat::TcpStreamCompat`; and provide `HyperConnector` to implement this `Service` (for specific implementation refer to [`examples/hyper_client.rs`](/examples/hyper_client.rs)).
+We implement monoio's IO object compatibility with hyper using `monoio_compat::hyper::MonoioIo`. For specific implementation refer to [`examples/hyper_client.rs`](/examples/hyper_client.rs).
 
-Finally, we specify `Executor` and `Connector` to create a client and do a request.
+Use `hyper::client::conn::http1::handshake` to create HTTP connection directly and make a request.
 
 ```rust
-let client = hyper::Client::builder()
-    .executor(HyperExecutor)
-    .build::<HyperConnector, hyper::Body>(connector);
-let res = client
-    .get("http://127.0.0.1:23300/monoio".parse().unwrap())
-    .await
-    .expect("failed to fetch");
+let stream = TcpStream::connect(addr).await?.into_poll_io()?;
+let io = MonoioIo::new(stream);
+
+let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+monoio::spawn(async move {
+    if let Err(err) = conn.await {
+        println!("Connection failed: {:?}", err);
+    }
+});
+
+let req = Request::builder()
+    .uri(path)
+    .header(hyper::header::HOST, authority.as_str())
+    .body(Empty::<Bytes>::new())?;
+
+let mut res = sender.send_request(req).await?;
 ```
 
 An additional note here is that hyper does not support thread-per-core Runtime well. You can refer to the [issue](https://github.com/hyperium/hyper/issues/2341) mentioned by the author of Glommio.

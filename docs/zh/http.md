@@ -77,18 +77,27 @@ async fn hyper_handler(req: Request<Body>) -> Result<Response<Body>, std::conver
 
 客户端的实现涉及如何创建连接，这个也是 Runtime 强耦合的，所以 hyper 提供了 `Connector` 抽象，它被定义为一个 Tower Service，接收 `hyper::Uri` 返回实现 `tokio::io::AsyncRead + tokio::io::AsyncWrite + hyper::client::connect::Connection`（也就是广义上的连接）的 future。
 
-我们基于 `monoio_compat::TcpStreamCompat` 定义 `HyperConnection` 来实现上述约束；并提供 `HyperConnector` 实现这个 Service（具体实现参考 [`examples/hyper_client.rs`](/examples/hyper_client.rs)）。
+我们基于 `monoio_compat::hyper::MonoioIo` 来实现 monoio 的 IO 对象与 hyper 的兼容。具体实现参考 [`examples/hyper_client.rs`](/examples/hyper_client.rs)）。
 
-最后我们指定 Executor 和 Connector 创建 client，并发起请求。
+使用 `hyper::client::conn::http1::handshake` 直接创建 HTTP 连接并发起请求。
 
 ```rust
-let client = hyper::Client::builder()
-    .executor(HyperExecutor)
-    .build::<HyperConnector, hyper::Body>(connector);
-let res = client
-    .get("http://127.0.0.1:23300/monoio".parse().unwrap())
-    .await
-    .expect("failed to fetch");
+let stream = TcpStream::connect(addr).await?.into_poll_io()?;
+let io = MonoioIo::new(stream);
+
+let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+monoio::spawn(async move {
+    if let Err(err) = conn.await {
+        println!("Connection failed: {:?}", err);
+    }
+});
+
+let req = Request::builder()
+    .uri(path)
+    .header(hyper::header::HOST, authority.as_str())
+    .body(Empty::<Bytes>::new())?;
+
+let mut res = sender.send_request(req).await?;
 ```
 
 这里要额外说明的是，hyper 并没有很好地支持 thread-per-core 的 Runtime。可以参考 Glommio 的作者提的 [issue](https://github.com/hyperium/hyper/issues/2341)。
