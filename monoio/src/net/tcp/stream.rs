@@ -259,6 +259,19 @@ impl TcpStream {
         let op = Op::poll_write(&self.fd, relaxed).unwrap();
         op.wait().await
     }
+
+    /// Zero-copy write using IORING_OP_SEND_ZC (Linux 6.0+).
+    ///
+    /// The kernel pins the userspace buffer and DMAs directly from it,
+    /// avoiding the copy into the socket buffer. The buffer is held until
+    /// the kernel signals it is safe to release via a notification CQE.
+    ///
+    /// This is most effective for large writes (e.g. 10KB+).
+    #[cfg(all(target_os = "linux", feature = "iouring"))]
+    pub async fn write_zc<T: IoBuf>(&self, buf: T) -> BufResult<usize, T> {
+        let op = Op::send_zc(self.fd.clone(), buf).unwrap();
+        op.result().await
+    }
 }
 
 impl AsReadFd for TcpStream {
