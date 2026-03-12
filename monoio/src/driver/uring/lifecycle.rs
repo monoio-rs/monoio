@@ -180,8 +180,7 @@ impl Ref<'_, MaybeFdLifecycle> {
                     let old = std::mem::replace(ref_mut, Lifecycle::Submitted);
                     match old {
                         Lifecycle::WaitingMore(_, result, flags) => {
-                            *ref_mut =
-                                Lifecycle::WaitingMore(cx.waker().clone(), result, flags);
+                            *ref_mut = Lifecycle::WaitingMore(cx.waker().clone(), result, flags);
                         }
                         _ => unsafe { std::hint::unreachable_unchecked() },
                     }
