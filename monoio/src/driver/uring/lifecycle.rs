@@ -63,6 +63,7 @@ impl Ref<'_, MaybeFdLifecycle> {
     // # Safety
     // Caller must make sure the result is valid since it may contain fd or a length hint.
     pub(crate) unsafe fn complete(mut self, result: io::Result<u32>, flags: u32) {
+        let is_fd = self.is_fd;
         let ref_mut = &mut self.lifecycle;
 
         // Handle notification CQE (second CQE of a multi-CQE op like SEND_ZC)
@@ -98,7 +99,7 @@ impl Ref<'_, MaybeFdLifecycle> {
 
         // Handle first CQE with MORE flag (more CQEs will follow, e.g. SEND_ZC)
         if flags & IORING_CQE_F_MORE != 0 {
-            let result = MaybeFd::new_result(result, self.is_fd);
+            let result = MaybeFd::new_result(result, is_fd);
             match ref_mut {
                 Lifecycle::Submitted => {
                     *ref_mut = Lifecycle::CompletedMore(result, flags);
@@ -128,7 +129,7 @@ impl Ref<'_, MaybeFdLifecycle> {
         }
 
         // Normal single-CQE completion (existing behavior)
-        let result = MaybeFd::new_result(result, self.is_fd);
+        let result = MaybeFd::new_result(result, is_fd);
         match ref_mut {
             Lifecycle::Submitted => {
                 *ref_mut = Lifecycle::Completed(result, flags);
