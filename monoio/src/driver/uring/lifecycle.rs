@@ -74,25 +74,31 @@ impl Ref<'_, MaybeFdLifecycle> {
                     let old = std::mem::replace(ref_mut, Lifecycle::Submitted);
                     match old {
                         Lifecycle::CompletedMore(stored_result, stored_flags) => {
-                            *ref_mut = Lifecycle::Completed(stored_result, stored_flags);
+                            *ref_mut = Lifecycle::Completed(
+                                stored_result,
+                                stored_flags & !IORING_CQE_F_MORE,
+                            );
                         }
-                        _ => std::hint::unreachable_unchecked(),
+                        _ => unreachable!("lifecycle state mismatch"),
                     }
                 }
                 Lifecycle::WaitingMore(_, _, _) => {
                     let old = std::mem::replace(ref_mut, Lifecycle::Submitted);
                     match old {
                         Lifecycle::WaitingMore(waker, stored_result, stored_flags) => {
-                            *ref_mut = Lifecycle::Completed(stored_result, stored_flags);
+                            *ref_mut = Lifecycle::Completed(
+                                stored_result,
+                                stored_flags & !IORING_CQE_F_MORE,
+                            );
                             waker.wake();
                         }
-                        _ => std::hint::unreachable_unchecked(),
+                        _ => unreachable!("lifecycle state mismatch"),
                     }
                 }
                 Lifecycle::IgnoredMore(..) => {
                     self.remove();
                 }
-                _ => std::hint::unreachable_unchecked(),
+                _ => unreachable!("lifecycle state mismatch"),
             }
             return;
         }
@@ -111,7 +117,7 @@ impl Ref<'_, MaybeFdLifecycle> {
                             // Don't wake yet — we need to wait for the notification CQE
                             *ref_mut = Lifecycle::WaitingMore(waker, result, flags);
                         }
-                        _ => std::hint::unreachable_unchecked(),
+                        _ => unreachable!("lifecycle state mismatch"),
                     }
                 }
                 Lifecycle::Ignored(_) => {
@@ -120,10 +126,10 @@ impl Ref<'_, MaybeFdLifecycle> {
                         Lifecycle::Ignored(data) => {
                             *ref_mut = Lifecycle::IgnoredMore(data);
                         }
-                        _ => std::hint::unreachable_unchecked(),
+                        _ => unreachable!("lifecycle state mismatch"),
                     }
                 }
-                _ => std::hint::unreachable_unchecked(),
+                _ => unreachable!("lifecycle state mismatch"),
             }
             return;
         }
@@ -140,14 +146,14 @@ impl Ref<'_, MaybeFdLifecycle> {
                     Lifecycle::Waiting(waker) => {
                         waker.wake();
                     }
-                    _ => std::hint::unreachable_unchecked(),
+                    _ => unreachable!("lifecycle state mismatch"),
                 }
             }
             Lifecycle::Ignored(..) => {
                 self.remove();
             }
-            Lifecycle::Completed(..) => std::hint::unreachable_unchecked(),
-            _ => std::hint::unreachable_unchecked(),
+            Lifecycle::Completed(..) => unreachable!("lifecycle state mismatch"),
+            _ => unreachable!("lifecycle state mismatch"),
         }
     }
 
@@ -172,7 +178,7 @@ impl Ref<'_, MaybeFdLifecycle> {
                     Lifecycle::CompletedMore(result, flags) => {
                         *ref_mut = Lifecycle::WaitingMore(cx.waker().clone(), result, flags);
                     }
-                    _ => unsafe { std::hint::unreachable_unchecked() },
+                    _ => unreachable!("lifecycle state mismatch"),
                 }
                 return Poll::Pending;
             }
@@ -183,7 +189,7 @@ impl Ref<'_, MaybeFdLifecycle> {
                         Lifecycle::WaitingMore(_, result, flags) => {
                             *ref_mut = Lifecycle::WaitingMore(cx.waker().clone(), result, flags);
                         }
-                        _ => unsafe { std::hint::unreachable_unchecked() },
+                        _ => unreachable!("lifecycle state mismatch"),
                     }
                 }
                 return Poll::Pending;
@@ -193,7 +199,7 @@ impl Ref<'_, MaybeFdLifecycle> {
 
         match self.remove().lifecycle {
             Lifecycle::Completed(result, flags) => Poll::Ready(CompletionMeta { result, flags }),
-            _ => unsafe { std::hint::unreachable_unchecked() },
+            _ => unreachable!("lifecycle state mismatch"),
         }
     }
 
@@ -222,17 +228,245 @@ impl Ref<'_, MaybeFdLifecycle> {
                     Lifecycle::CompletedMore(_, _) | Lifecycle::WaitingMore(_, _, _) => {
                         *ref_mut = Lifecycle::IgnoredMore(boxed_data);
                     }
-                    _ => unsafe { std::hint::unreachable_unchecked() },
+                    _ => unreachable!("lifecycle state mismatch"),
                 }
                 return false;
             }
             Lifecycle::Completed(..) => {
                 self.remove();
             }
-            Lifecycle::Ignored(..) | Lifecycle::IgnoredMore(..) => unsafe {
-                std::hint::unreachable_unchecked()
+            Lifecycle::Ignored(..) | Lifecycle::IgnoredMore(..) => {
+                unreachable!("lifecycle state mismatch")
             },
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+    };
+
+    use super::*;
+    use crate::utils::slab::Slab;
+
+    fn vtable_ref() -> &'static RawWakerVTable {
+        &RawWakerVTable::new(
+            |ptr| {
+                let arc = unsafe { Arc::from_raw(ptr as *const AtomicBool) };
+                let cloned = arc.clone();
+                std::mem::forget(arc);
+                RawWaker::new(Arc::into_raw(cloned) as *const (), vtable_ref())
+            },
+            |ptr| {
+                let arc = unsafe { Arc::from_raw(ptr as *const AtomicBool) };
+                arc.store(true, Ordering::SeqCst);
+            },
+            |ptr| {
+                let arc = unsafe { Arc::from_raw(ptr as *const AtomicBool) };
+                arc.store(true, Ordering::SeqCst);
+                std::mem::forget(arc);
+            },
+            |ptr| {
+                unsafe { Arc::from_raw(ptr as *const AtomicBool) };
+            },
+        )
+    }
+
+    /// Create a waker that sets a flag when woken.
+    fn flag_waker() -> (Waker, Arc<AtomicBool>) {
+        let flag = Arc::new(AtomicBool::new(false));
+        let flag_clone = flag.clone();
+        let raw = RawWaker::new(Arc::into_raw(flag_clone) as *const (), vtable_ref());
+        let waker = unsafe { Waker::from_raw(raw) };
+        (waker, flag)
+    }
+
+    fn insert_lifecycle(slab: &mut Slab<MaybeFdLifecycle>) -> usize {
+        slab.insert(MaybeFdLifecycle::new(false))
+    }
+
+    /// Submitted → MORE CQE → CompletedMore → NOTIF CQE → Completed → poll → Ready
+    #[test]
+    fn multi_cqe_no_poll_between() {
+        let mut slab = Slab::new();
+        let key = insert_lifecycle(&mut slab);
+
+        // First CQE with MORE flag
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(42), IORING_CQE_F_MORE) };
+
+        // Notification CQE
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(0), IORING_CQE_F_NOTIF) };
+
+        // Poll should return Ready with the result from the first CQE
+        let (waker, _flag) = flag_waker();
+        let mut cx = Context::from_waker(&waker);
+        let r = slab.get(key).unwrap();
+        match r.poll_op(&mut cx) {
+            Poll::Ready(meta) => {
+                assert_eq!(meta.result.unwrap().into_inner(), 42);
+                // MORE flag should be cleared
+                assert_eq!(meta.flags & IORING_CQE_F_MORE, 0);
+            }
+            Poll::Pending => panic!("expected Ready"),
+        }
+    }
+
+    /// Submitted → poll → Waiting → MORE CQE → WaitingMore → poll (Pending)
+    /// → NOTIF CQE (wakes) → poll → Ready
+    #[test]
+    fn multi_cqe_poll_between() {
+        let mut slab = Slab::new();
+        let key = insert_lifecycle(&mut slab);
+
+        let (waker, woken) = flag_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        // First poll: Submitted → Waiting
+        let r = slab.get(key).unwrap();
+        assert!(r.poll_op(&mut cx).is_pending());
+
+        // First CQE with MORE: Waiting → WaitingMore (should NOT wake)
+        woken.store(false, Ordering::SeqCst);
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(100), IORING_CQE_F_MORE) };
+        assert!(!woken.load(Ordering::SeqCst), "should not wake on MORE CQE");
+
+        // Poll again: WaitingMore → still Pending
+        let r = slab.get(key).unwrap();
+        assert!(r.poll_op(&mut cx).is_pending());
+
+        // Notification CQE: WaitingMore → Completed, wakes
+        woken.store(false, Ordering::SeqCst);
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(0), IORING_CQE_F_NOTIF) };
+        assert!(woken.load(Ordering::SeqCst), "should wake on NOTIF CQE");
+
+        // Final poll: Completed → Ready
+        let r = slab.get(key).unwrap();
+        match r.poll_op(&mut cx) {
+            Poll::Ready(meta) => {
+                assert_eq!(meta.result.unwrap().into_inner(), 100);
+                assert_eq!(meta.flags & IORING_CQE_F_MORE, 0);
+            }
+            Poll::Pending => panic!("expected Ready"),
+        }
+    }
+
+    /// Submitted → MORE CQE → CompletedMore → drop_op → IgnoredMore
+    /// → NOTIF CQE → slot removed
+    #[test]
+    fn multi_cqe_drop_before_notification_from_completed_more() {
+        let mut slab = Slab::new();
+        let key = insert_lifecycle(&mut slab);
+
+        // First CQE with MORE
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(10), IORING_CQE_F_MORE) };
+
+        // Drop the op (future dropped before notification)
+        let r = slab.get(key).unwrap();
+        let mut data: Option<()> = Some(());
+        let finished = r.drop_op(&mut data);
+        assert!(!finished, "op not finished yet, notification pending");
+
+        // Notification CQE arrives — should clean up the slot
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(0), IORING_CQE_F_NOTIF) };
+
+        // Slot should have been removed
+        assert!(slab.get(key).is_none());
+    }
+
+    /// Submitted → poll → Waiting → MORE CQE → WaitingMore → drop_op → IgnoredMore
+    /// → NOTIF CQE → slot removed
+    #[test]
+    fn multi_cqe_drop_before_notification_from_waiting_more() {
+        let mut slab = Slab::new();
+        let key = insert_lifecycle(&mut slab);
+
+        let (waker, _flag) = flag_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        // Poll: Submitted → Waiting
+        let r = slab.get(key).unwrap();
+        assert!(r.poll_op(&mut cx).is_pending());
+
+        // First CQE with MORE: Waiting → WaitingMore
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(20), IORING_CQE_F_MORE) };
+
+        // Drop the op
+        let r = slab.get(key).unwrap();
+        let mut data: Option<()> = Some(());
+        let finished = r.drop_op(&mut data);
+        assert!(!finished, "op not finished yet, notification pending");
+
+        // Notification CQE arrives — should clean up the slot
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(0), IORING_CQE_F_NOTIF) };
+
+        // Slot should have been removed
+        assert!(slab.get(key).is_none());
+    }
+
+    /// Normal single-CQE completion path (regression guard).
+    #[test]
+    fn single_cqe_submitted_to_completed() {
+        let mut slab = Slab::new();
+        let key = insert_lifecycle(&mut slab);
+
+        // Complete without MORE flag
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(7), 0) };
+
+        // Poll should return Ready
+        let (waker, _flag) = flag_waker();
+        let mut cx = Context::from_waker(&waker);
+        let r = slab.get(key).unwrap();
+        match r.poll_op(&mut cx) {
+            Poll::Ready(meta) => {
+                assert_eq!(meta.result.unwrap().into_inner(), 7);
+                assert_eq!(meta.flags, 0);
+            }
+            Poll::Pending => panic!("expected Ready"),
+        }
+    }
+
+    /// Single-CQE with waker: Submitted → poll → Waiting → complete → wakes → poll → Ready
+    #[test]
+    fn single_cqe_with_waker() {
+        let mut slab = Slab::new();
+        let key = insert_lifecycle(&mut slab);
+
+        let (waker, woken) = flag_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        // Poll: Submitted → Waiting
+        let r = slab.get(key).unwrap();
+        assert!(r.poll_op(&mut cx).is_pending());
+
+        // Complete: Waiting → Completed, wakes
+        woken.store(false, Ordering::SeqCst);
+        let r = slab.get(key).unwrap();
+        unsafe { r.complete(Ok(99), 0) };
+        assert!(woken.load(Ordering::SeqCst));
+
+        // Poll: Completed → Ready
+        let r = slab.get(key).unwrap();
+        match r.poll_op(&mut cx) {
+            Poll::Ready(meta) => {
+                assert_eq!(meta.result.unwrap().into_inner(), 99);
+            }
+            Poll::Pending => panic!("expected Ready"),
+        }
     }
 }

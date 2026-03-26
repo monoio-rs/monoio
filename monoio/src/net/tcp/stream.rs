@@ -260,11 +260,17 @@ impl TcpStream {
         op.wait().await
     }
 
-    /// Zero-copy write using IORING_OP_SEND_ZC (Linux 6.0+).
+    /// Attempts a zero-copy write using `IORING_OP_SEND_ZC` (Linux 6.0+).
     ///
-    /// The kernel pins the userspace buffer and DMAs directly from it,
-    /// avoiding the copy into the socket buffer. The buffer is held until
-    /// the kernel signals it is safe to release via a notification CQE.
+    /// When supported by the kernel, NIC and socket configuration, the kernel
+    /// may pin the userspace buffer and DMA directly from it, avoiding a copy
+    /// into the socket buffer. The buffer is then held until the kernel
+    /// signals it is safe to release via a notification CQE.
+    ///
+    /// In practice, `SEND_ZC` is best-effort: it may fall back to a regular
+    /// send (with copying) or fail with errors such as `EOPNOTSUPP` or
+    /// `EINVAL`. Callers should treat this like a normal write and must not
+    /// assume that a successful call always performed true zero-copy.
     ///
     /// This is most effective for large writes (e.g. 10KB+).
     #[cfg(all(target_os = "linux", feature = "iouring"))]

@@ -355,14 +355,14 @@ impl<T: IoBuf> Op<SendZc<T>> {
 impl<T: IoBuf> OpAble for SendZc<T> {
     fn uring_op(&mut self) -> io_uring::squeue::Entry {
         #[allow(deprecated)]
-        let flags = libc::MSG_NOSIGNAL as libc::c_int;
+        const FLAGS: u32 = libc::MSG_NOSIGNAL as u32;
 
         opcode::SendZc::new(
             types::Fd(self.fd.raw_fd()),
             self.buf.read_ptr(),
             self.buf.bytes_init() as _,
         )
-        .flags(flags)
+        .flags(FLAGS)
         .build()
     }
 
