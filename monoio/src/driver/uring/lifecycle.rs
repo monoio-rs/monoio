@@ -237,7 +237,7 @@ impl Ref<'_, MaybeFdLifecycle> {
             }
             Lifecycle::Ignored(..) | Lifecycle::IgnoredMore(..) => {
                 unreachable!("lifecycle state mismatch")
-            },
+            }
         }
         true
     }
