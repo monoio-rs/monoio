@@ -355,7 +355,7 @@ impl<T: IoBuf> Op<SendZc<T>> {
 impl<T: IoBuf> OpAble for SendZc<T> {
     fn uring_op(&mut self) -> io_uring::squeue::Entry {
         #[allow(deprecated)]
-        const FLAGS: i32 = libc::MSG_NOSIGNAL as i32;
+        const FLAGS: i32 = libc::MSG_NOSIGNAL;
 
         opcode::SendZc::new(
             types::Fd(self.fd.raw_fd()),
