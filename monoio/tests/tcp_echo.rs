@@ -112,7 +112,10 @@ async fn split_rw_able() {
             panic!("unexpected readable");
         }
     }
-    let (_, mut writer) = TcpStream::connect(listener_addr).await.unwrap().into_split();
+    let (_, mut writer) = TcpStream::connect(listener_addr)
+        .await
+        .unwrap()
+        .into_split();
 
     assert!(writer.writable(false).await.is_ok());
     assert!(listener.readable(false).await.is_ok());
