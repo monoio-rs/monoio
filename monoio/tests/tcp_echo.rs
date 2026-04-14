@@ -100,6 +100,40 @@ async fn rw_able() {
     assert!(conn.readable(false).await.is_ok());
 }
 
+//essentially the same as rw_able, but test split stream instead of original stream
+#[monoio::test_all(timer_enabled = true)]
+async fn split_rw_able() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let listener_addr = listener.local_addr().unwrap();
+
+    monoio::select! {
+        _ = monoio::time::sleep(std::time::Duration::from_millis(50)) => {},
+        _ = listener.readable(false) => {
+            panic!("unexpected readable");
+        }
+    }
+    let (_, mut writer) = TcpStream::connect(listener_addr).await.unwrap().into_split();
+
+    assert!(writer.writable(false).await.is_ok());
+    assert!(listener.readable(false).await.is_ok());
+    let (conn, _) = listener.accept().await.unwrap();
+    let (reader, _) = conn.into_split();
+    monoio::select! {
+        _ = monoio::time::sleep(std::time::Duration::from_millis(50)) => {},
+        _ = reader.readable(false) => {
+            panic!("unexpected readable");
+        }
+        _ = listener.readable(false) => {
+            // even listener's inner readiness state is ready, we will check it again
+            panic!("unexpected readable");
+        }
+    }
+    assert!(writer.writable(false).await.is_ok());
+    let (res, _) = writer.write_all("MSG").await;
+    assert!(res.is_ok());
+    assert!(reader.readable(false).await.is_ok());
+}
+
 #[monoio::test_all]
 async fn echo_tfo() {
     use std::net::SocketAddr;
