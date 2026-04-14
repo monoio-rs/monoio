@@ -27,15 +27,15 @@ impl TcpOwnedReadHalf {
     /// Wait for read readiness.
     /// Note: Do not use it before every io. It is different from other runtimes!
     ///
-    /// Everytime call to this method may pay a syscall cost.
-    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use use
+    /// Every call to this method may pay a syscall cost.
+    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use
     /// inner readiness state; if !relaxed, it will call syscall poll after that.
     ///
     /// If relaxed, on legacy driver it may return false positive result.
     /// If you want to do io by your own, you must maintain io readiness and wait
     /// for io ready with relaxed=false.
     #[inline]
-    pub async fn readable(&self, relaxed: bool) -> Result<(), io::Error> {
+    pub async fn readable(&self, relaxed: bool) -> io::Result<()> {
         unsafe { &*self.0.get() }.readable(relaxed).await
     }
 }
@@ -64,15 +64,15 @@ impl TcpOwnedWriteHalf {
     /// Wait for write readiness.
     /// Note: Do not use it before every io. It is different from other runtimes!
     ///
-    /// Everytime call to this method may pay a syscall cost.
-    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use use
+    /// Every call to this method may pay a syscall cost.
+    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use
     /// inner readiness state; if !relaxed, it will call syscall poll after that.
     ///
     /// If relaxed, on legacy driver it may return false positive result.
     /// If you want to do io by your own, you must maintain io readiness and wait
     /// for io ready with relaxed=false.
     #[inline]
-    pub async fn writable(&self, relaxed: bool) -> Result<(), io::Error> {
+    pub async fn writable(&self, relaxed: bool) -> io::Result<()> {
         unsafe { &*self.0.get() }.writable(relaxed).await
     }
 }
