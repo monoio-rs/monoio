@@ -74,6 +74,16 @@ impl From<libc::statx> for FileAttr {
     }
 }
 
+#[cfg(target_os = "linux")]
+impl From<libc::stat64> for FileAttr {
+    fn from(value: libc::stat64) -> Self {
+        Self {
+            stat: value,
+            statx_extra_fields: None,
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 impl From<libc::stat> for FileAttr {
     fn from(stat: libc::stat) -> Self {

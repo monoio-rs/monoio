@@ -62,10 +62,22 @@ pub(crate) async fn metadata(fd: SharedFd) -> std::io::Result<Metadata> {
     #[cfg(target_os = "linux")]
     let flags = libc::AT_STATX_SYNC_AS_STAT | libc::AT_EMPTY_PATH;
     #[cfg(target_os = "linux")]
-    let op = Op::statx_using_fd(fd, flags)?;
+    match Op::statx_using_fd(fd.clone(), flags) {
+        Ok(op) => op.result().await.map(FileAttr::from).map(Metadata),
+        Err(e) if matches!(e.raw_os_error(), Some(libc::ENOSYS) | Some(libc::ENOTSUP)) => {
+            // statx is not support, use fstat64 instead
+
+            let mut buf: libc::stat64 = unsafe { std::mem::zeroed() };
+            crate::syscall!(fstat64@RAW(fd.as_raw_fd(), &mut buf))?;
+
+            Ok(Metadata(FileAttr::from(buf)))
+        }
+        Err(e) => Err(e),
+    }
+
     #[cfg(target_os = "macos")]
     let op = Op::statx_using_fd(fd, true)?;
-
+    #[cfg(target_os = "macos")]
     op.result().await.map(FileAttr::from).map(Metadata)
 }
 

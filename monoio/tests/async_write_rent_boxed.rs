@@ -81,19 +81,13 @@ impl AsyncWriteRent for ErrorWriter {
         &mut self,
         _buf: T,
     ) -> impl std::future::Future<Output = monoio::BufResult<usize, T>> {
-        std::future::ready((
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "fail")),
-            _buf,
-        ))
+        std::future::ready((Err(std::io::Error::other("fail")), _buf))
     }
     fn writev<T: monoio::buf::IoVecBuf>(
         &mut self,
         _buf_vec: T,
     ) -> impl std::future::Future<Output = monoio::BufResult<usize, T>> {
-        std::future::ready((
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "fail")),
-            _buf_vec,
-        ))
+        std::future::ready((Err(std::io::Error::other("fail")), _buf_vec))
     }
     fn flush(&mut self) -> impl std::future::Future<Output = std::io::Result<()>> {
         std::future::ready(Ok(()))

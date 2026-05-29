@@ -1,7 +1,6 @@
 use std::{
     io::Write,
     net::{IpAddr, SocketAddr},
-    sync::LazyLock,
     thread::sleep,
     time::Duration,
 };
@@ -110,7 +109,7 @@ async fn connect_timeout_dst() {
         };
 
         let res = monoio::select! {
-            a = connect => false,
+            _ = connect => false,
             _ = monoio::time::sleep(std::time::Duration::from_secs(1)) => { true }
         };
         assert!(res);
@@ -128,14 +127,14 @@ fn create_test_server() -> u16 {
     let addr = listener.local_addr().unwrap();
 
     // the listener will not be closed until the test is done
-    let handler = std::thread::spawn(move || {
+    let _ = std::thread::spawn(move || {
         for stream in listener.incoming() {
             match stream {
                 Ok(mut stream) => {
                     sleep(Duration::from_millis(200));
                     let _ = stream.write_all(b"test server response");
                 }
-                Err(e) => eprintln!("connection failed: {}", e),
+                Err(e) => eprintln!("connection failed: {e}"),
             }
         }
     });
@@ -149,7 +148,7 @@ async fn cancel_read() {
 
     let server_port = create_test_server();
 
-    let mut s = TcpStream::connect(format!("127.0.0.1:{}", server_port))
+    let mut s = TcpStream::connect(format!("127.0.0.1:{server_port}"))
         .await
         .unwrap();
     let buf = vec![0; 20];
@@ -172,7 +171,7 @@ async fn cancel_select() {
 
     let server_port = create_test_server();
 
-    let mut s = TcpStream::connect(format!("127.0.0.1:{}", server_port))
+    let mut s = TcpStream::connect(format!("127.0.0.1:{server_port}"))
         .await
         .unwrap();
     let buf = vec![0; 20];

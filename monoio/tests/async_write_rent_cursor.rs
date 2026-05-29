@@ -57,7 +57,7 @@ async fn test_cursor_mut_vec() {
 
 #[monoio::test_all]
 async fn test_cursor_mut_slice() {
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     {
         let mut cursor = Cursor::new(&mut data[..]);
 
@@ -137,7 +137,7 @@ async fn test_cursor_vectored_write() {
 // Test vectored writes with fixed-size buffers
 #[monoio::test_all]
 async fn test_cursor_vectored_write_fixed_size() {
-    let mut data = vec![0u8; 32];
+    let mut data = [0u8; 32];
     {
         let mut cursor = Cursor::new(&mut data[..]);
 
@@ -172,7 +172,7 @@ async fn test_cursor_vectored_write_fixed_size() {
 // Test error conditions
 #[monoio::test_all]
 async fn test_cursor_error_conditions() {
-    let mut data = vec![0u8; 8];
+    let mut data = [0u8; 8];
     {
         let mut cursor = Cursor::new(&mut data[..]);
 
