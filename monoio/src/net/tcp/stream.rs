@@ -622,11 +622,11 @@ impl StreamMeta {
     }
 
     fn no_delay(&self) -> io::Result<bool> {
-        self.socket.as_ref().unwrap().nodelay()
+        self.socket.as_ref().unwrap().tcp_nodelay()
     }
 
     fn set_no_delay(&self, no_delay: bool) -> io::Result<()> {
-        self.socket.as_ref().unwrap().set_nodelay(no_delay)
+        self.socket.as_ref().unwrap().set_tcp_nodelay(no_delay)
     }
 
     #[allow(unused_variables)]
