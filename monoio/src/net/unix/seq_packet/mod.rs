@@ -56,7 +56,7 @@ impl UnixSeqpacket {
         sockaddr: libc::sockaddr_un,
         socklen: libc::socklen_t,
     ) -> io::Result<Self> {
-        let socket = new_socket(libc::AF_UNIX, libc::SOCK_SEQPACKET)?;
+        let socket = new_socket(socket2::Domain::UNIX, socket2::Type::SEQPACKET).await?;
         let op = Op::connect_unix(SharedFd::new::<false>(socket)?, sockaddr, socklen)?;
         let completion = op.await;
         completion.meta.result?;

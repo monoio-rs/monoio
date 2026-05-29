@@ -25,7 +25,7 @@ async fn main() {
     });
 
     std::fs::remove_file(ADDRESS).ok();
-    let listener = UnixListener::bind(ADDRESS).unwrap();
+    let listener = UnixListener::async_bind(ADDRESS).await.unwrap();
     println!("listening on {ADDRESS:?}");
     drop(rx);
     let (mut conn, addr) = listener.accept().await.unwrap();

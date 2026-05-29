@@ -21,6 +21,15 @@ mod send;
 #[cfg(unix)]
 mod statx;
 
+#[cfg(unix)]
+mod socket;
+
+#[cfg(feature = "bind")]
+mod bind;
+
+#[cfg(feature = "listen")]
+mod listen;
+
 #[cfg(feature = "mkdirat")]
 mod mkdir;
 

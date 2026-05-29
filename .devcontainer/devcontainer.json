@@ -1,0 +1,20 @@
+{
+    "name": "monoio-dev",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "remoteUser": "vscode",
+    "containerEnv": {
+        "CARGO_TERM_COLOR": "always",
+        "CARGO_TARGET_DIR": "/tmp/monoio-target",
+        "RUST_BACKTRACE": "1"
+    },
+    "runArgs": [
+        "--ulimit",
+        "memlock=-1:-1",
+        "--security-opt",
+        "seccomp=unconfined"
+    ],
+    "postCreateCommand": "rustup toolchain install nightly --profile minimal && rustup default nightly && rustup component add --toolchain nightly rustfmt clippy rust-analyzer && cargo +nightly fetch"
+}

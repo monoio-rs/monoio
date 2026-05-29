@@ -13,7 +13,7 @@ use monoio::{
 
 #[monoio::main(driver = "fusion")]
 async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:50002").unwrap();
+    let listener = TcpListener::async_bind("127.0.0.1:50002").await.unwrap();
     println!("listening");
     loop {
         let incoming = listener.accept().await;

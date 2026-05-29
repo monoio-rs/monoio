@@ -32,6 +32,29 @@ pub struct TcpListener {
 }
 
 impl TcpListener {
+    fn apply_listener_opts(sys_listener: &socket2::Socket, opts: &ListenerOpts) -> io::Result<()> {
+        #[cfg(unix)]
+        if opts.reuse_port {
+            sys_listener.set_reuse_port(true)?;
+        }
+        if opts.reuse_addr {
+            sys_listener.set_reuse_address(true)?;
+        }
+        if let Some(send_buf_size) = opts.send_buf_size {
+            sys_listener.set_send_buffer_size(send_buf_size)?;
+        }
+        if let Some(recv_buf_size) = opts.recv_buf_size {
+            sys_listener.set_recv_buffer_size(recv_buf_size)?;
+        }
+        if opts.tcp_fast_open {
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            super::tfo::set_tcp_fastopen(sys_listener, opts.backlog)?;
+            #[cfg(any(target_os = "ios", target_os = "macos"))]
+            let _ = super::tfo::set_tcp_fastopen_force_enable(sys_listener);
+        }
+        Ok(())
+    }
+
     #[allow(unreachable_code, clippy::diverging_sub_expression, unused_variables)]
     pub(crate) fn from_shared_fd(fd: SharedFd) -> Self {
         #[cfg(unix)]
@@ -64,26 +87,78 @@ impl TcpListener {
         Self::set_non_blocking(&sys_listener)?;
 
         let addr = socket2::SockAddr::from(addr);
-        #[cfg(unix)]
-        if opts.reuse_port {
-            sys_listener.set_reuse_port(true)?;
-        }
-        if opts.reuse_addr {
-            sys_listener.set_reuse_address(true)?;
-        }
-        if let Some(send_buf_size) = opts.send_buf_size {
-            sys_listener.set_send_buffer_size(send_buf_size)?;
-        }
-        if let Some(recv_buf_size) = opts.recv_buf_size {
-            sys_listener.set_recv_buffer_size(recv_buf_size)?;
-        }
-        if opts.tcp_fast_open {
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            super::tfo::set_tcp_fastopen(&sys_listener, opts.backlog)?;
-            #[cfg(any(target_os = "ios", target_os = "macos"))]
-            let _ = super::tfo::set_tcp_fastopen_force_enable(&sys_listener);
-        }
+        Self::apply_listener_opts(&sys_listener, opts)?;
         sys_listener.bind(&addr)?;
+        sys_listener.listen(opts.backlog)?;
+
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        if opts.tcp_fast_open {
+            super::tfo::set_tcp_fastopen(&sys_listener)?;
+        }
+
+        #[cfg(unix)]
+        let fd = sys_listener.into_raw_fd();
+
+        #[cfg(windows)]
+        let fd = sys_listener.into_raw_socket();
+
+        Ok(Self::from_shared_fd(SharedFd::new::<false>(fd)?))
+    }
+
+    /// Bind to address with config asynchronously
+    pub async fn async_bind_with_config<A: ToSocketAddrs>(
+        addr: A,
+        opts: &ListenerOpts,
+    ) -> io::Result<Self> {
+        let addr = addr
+            .to_socket_addrs()?
+            .next()
+            .ok_or_else(|| io::Error::other("empty address"))?;
+
+        let domain = if addr.is_ipv6() {
+            socket2::Domain::IPV6
+        } else {
+            socket2::Domain::IPV4
+        };
+
+        #[cfg(unix)]
+        let sys_listener = {
+            let completion =
+                Op::socket(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?.await;
+            let socket_fd = completion.meta.result?;
+            let socket = socket_fd.into_inner() as i32;
+
+            unsafe { socket2::Socket::from_raw_fd(socket) }
+        };
+
+        #[cfg(windows)]
+        let sys_listener =
+            socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
+
+        #[cfg(feature = "legacy")]
+        Self::set_non_blocking(&sys_listener)?;
+
+        let addr = socket2::SockAddr::from(addr);
+        Self::apply_listener_opts(&sys_listener, opts)?;
+
+        #[cfg(feature = "bind")]
+        let sys_listener = {
+            let completion = Op::bind(sys_listener, addr)?.await;
+            completion.meta.result?;
+            completion.data.socket
+        };
+
+        #[cfg(not(feature = "bind"))]
+        sys_listener.bind(&addr)?;
+
+        #[cfg(feature = "listen")]
+        let sys_listener = {
+            let completion = Op::listen(sys_listener, opts.backlog)?.await;
+            completion.meta.result?;
+            completion.data.socket
+        };
+
+        #[cfg(not(feature = "listen"))]
         sys_listener.listen(opts.backlog)?;
 
         #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -104,6 +179,12 @@ impl TcpListener {
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
         const DEFAULT_CFG: ListenerOpts = ListenerOpts::new();
         Self::bind_with_config(addr, &DEFAULT_CFG)
+    }
+
+    /// Bind to address asynchronously
+    pub async fn async_bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+        const DEFAULT_CFG: ListenerOpts = ListenerOpts::new();
+        Self::async_bind_with_config(addr, &DEFAULT_CFG).await
     }
 
     /// Accept

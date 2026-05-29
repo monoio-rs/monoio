@@ -4,10 +4,10 @@ use monoio::net::udp::UdpSocket;
 async fn connect() {
     const MSG: &str = "foo bar baz";
 
-    let passive = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let passive_addr = passive.local_addr().unwrap();
 
-    let active = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let active = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let active_addr = active.local_addr().unwrap();
 
     active.connect(passive_addr).await.unwrap();
@@ -18,6 +18,22 @@ async fn connect() {
     assert_eq!(MSG.as_bytes(), &buffer);
     assert_eq!(active.local_addr().unwrap(), active_addr);
     assert_eq!(active.peer_addr().unwrap(), passive_addr);
+}
+
+#[monoio::test_all]
+async fn sync_bind_connect() {
+    const MSG: &str = "sync bind udp";
+
+    let passive = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive_addr = passive.local_addr().unwrap();
+
+    let active = UdpSocket::bind("127.0.0.1:0").unwrap();
+    active.connect(passive_addr).await.unwrap();
+    active.send(MSG).await.0.unwrap();
+
+    let (res, buffer) = passive.recv(Vec::with_capacity(32)).await;
+    res.unwrap();
+    assert_eq!(MSG.as_bytes(), &buffer);
 }
 
 #[monoio::test_all]
@@ -32,19 +48,19 @@ async fn send_to() {
         };
     }
 
-    let passive1 = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive1 = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let passive1_addr = passive1.local_addr().unwrap();
 
     let passive01 = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
     let passive01_addr = passive01.local_addr().unwrap();
 
-    let passive2 = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive2 = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let passive2_addr = passive2.local_addr().unwrap();
 
-    let passive3 = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive3 = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let passive3_addr = passive3.local_addr().unwrap();
 
-    let active = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let active = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let active_addr = active.local_addr().unwrap();
 
     active.send_to(MSG, passive01_addr).await.0.unwrap();
@@ -61,10 +77,10 @@ async fn send_to() {
 async fn rw_able() {
     const MSG: &str = "foo bar baz";
 
-    let passive = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let passive_addr = passive.local_addr().unwrap();
 
-    let active = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let active = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
 
     assert!(active.writable(false).await.is_ok());
     monoio::select! {
@@ -81,7 +97,7 @@ async fn rw_able() {
 
 #[monoio::test_all(timer_enabled = true)]
 async fn cancel_recv_from() {
-    let passive = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let passive = UdpSocket::async_bind("127.0.0.1:0").await.unwrap();
     let canceller = monoio::io::Canceller::new();
     let recv = passive.cancelable_recv_from(vec![0; 20], canceller.handle());
     let mut recv = std::pin::pin!(recv);

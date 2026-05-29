@@ -36,7 +36,12 @@ impl SocketAddr {
             return AddressKind::Unnamed;
         }
         let len = self.socklen as usize - offset;
-        let path = unsafe { &*(&self.sockaddr.sun_path as *const [libc::c_char] as *const [u8]) };
+        let path = unsafe {
+            std::slice::from_raw_parts(
+                self.sockaddr.sun_path.as_ptr().cast(),
+                self.sockaddr.sun_path.len(),
+            )
+        };
 
         // macOS seems to return a len of 16 and a zeroed sun_path for unnamed addresses
         if len == 0 || (cfg!(not(any(target_os = "linux", target_os = "android"))) && path[0] == 0)

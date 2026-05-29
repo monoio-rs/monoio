@@ -19,6 +19,31 @@ pub struct UnixListener {
 }
 
 impl UnixListener {
+    fn apply_listener_config(
+        sys_listener: &socket2::Socket,
+        config: &ListenerOpts,
+    ) -> io::Result<()> {
+        if config.reuse_port {
+            // Unix domain socket does not support SO_REUSEPORT.
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Unix sockets do not support SO_REUSEPORT",
+            ));
+        }
+
+        if config.reuse_addr {
+            sys_listener.set_reuse_address(true)?;
+        }
+        if let Some(send_buf_size) = config.send_buf_size {
+            sys_listener.set_send_buffer_size(send_buf_size)?;
+        }
+        if let Some(recv_buf_size) = config.recv_buf_size {
+            sys_listener.set_recv_buffer_size(recv_buf_size)?;
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn from_shared_fd(fd: SharedFd) -> Self {
         let sys_listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd.raw_fd()) };
         Self {
@@ -37,22 +62,49 @@ impl UnixListener {
             socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)?;
         let addr = socket2::SockAddr::unix(path)?;
 
-        if config.reuse_port {
-            // TODO: properly handle this. Warn?
-            // this seems to cause an error on current (>6.x) kernels:
-            // sys_listener.set_reuse_port(true)?;
-        }
-        if config.reuse_addr {
-            sys_listener.set_reuse_address(true)?;
-        }
-        if let Some(send_buf_size) = config.send_buf_size {
-            sys_listener.set_send_buffer_size(send_buf_size)?;
-        }
-        if let Some(recv_buf_size) = config.recv_buf_size {
-            sys_listener.set_recv_buffer_size(recv_buf_size)?;
-        }
+        Self::apply_listener_config(&sys_listener, config)?;
 
         sys_listener.bind(&addr)?;
+        sys_listener.listen(config.backlog)?;
+
+        let fd = SharedFd::new::<false>(sys_listener.into_raw_fd())?;
+
+        Ok(Self::from_shared_fd(fd))
+    }
+
+    /// Creates a new `UnixListener` bound to the specified socket with custom
+    /// config asynchronously.
+    pub async fn async_bind_with_config<P: AsRef<Path>>(
+        path: P,
+        config: &ListenerOpts,
+    ) -> io::Result<UnixListener> {
+        let sys_listener = {
+            let completion = Op::socket(socket2::Domain::UNIX, socket2::Type::STREAM, None)?.await;
+            let fd = completion.meta.result?.into_inner();
+            unsafe { socket2::Socket::from_raw_fd(fd as _) }
+        };
+        let addr = socket2::SockAddr::unix(path)?;
+
+        Self::apply_listener_config(&sys_listener, config)?;
+
+        #[cfg(feature = "bind")]
+        let sys_listener = {
+            let completion = Op::bind(sys_listener, addr)?.await;
+            completion.meta.result?;
+            completion.data.socket
+        };
+
+        #[cfg(not(feature = "bind"))]
+        sys_listener.bind(&addr)?;
+
+        #[cfg(feature = "listen")]
+        let sys_listener = {
+            let completion = Op::listen(sys_listener, config.backlog)?.await;
+            completion.meta.result?;
+            completion.data.socket
+        };
+
+        #[cfg(not(feature = "listen"))]
         sys_listener.listen(config.backlog)?;
 
         let fd = SharedFd::new::<false>(sys_listener.into_raw_fd())?;
@@ -63,7 +115,13 @@ impl UnixListener {
     /// Creates a new `UnixListener` bound to the specified socket with default
     /// config.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
-        Self::bind_with_config(path, &ListenerOpts::default())
+        Self::bind_with_config(path, &ListenerOpts::default().reuse_port(false))
+    }
+
+    /// Creates a new `UnixListener` bound to the specified socket with default
+    /// config asynchronously.
+    pub async fn async_bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
+        Self::async_bind_with_config(path, &ListenerOpts::default().reuse_port(false)).await
     }
 
     /// Accept
