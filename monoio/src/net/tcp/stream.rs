@@ -233,8 +233,8 @@ impl TcpStream {
     /// Wait for read readiness.
     /// Note: Do not use it before every io. It is different from other runtimes!
     ///
-    /// Everytime call to this method may pay a syscall cost.
-    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use use
+    /// Every call to this method may pay a syscall cost.
+    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use
     /// inner readiness state; if !relaxed, it will call syscall poll after that.
     ///
     /// If relaxed, on legacy driver it may return false positive result.
@@ -248,8 +248,8 @@ impl TcpStream {
     /// Wait for write readiness.
     /// Note: Do not use it before every io. It is different from other runtimes!
     ///
-    /// Everytime call to this method may pay a syscall cost.
-    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use use
+    /// Every call to this method may pay a syscall cost.
+    /// In uring impl, it will push a PollAdd op; in epoll impl, it will use
     /// inner readiness state; if !relaxed, it will call syscall poll after that.
     ///
     /// If relaxed, on legacy driver it may return false positive result.
