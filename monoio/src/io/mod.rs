@@ -30,12 +30,12 @@ mod util;
 #[cfg(feature = "poll-io")]
 pub use tokio::io as poll_io;
 pub(crate) use util::operation_canceled;
-#[cfg(all(target_os = "linux", feature = "splice"))]
-pub use util::zero_copy;
 pub use util::{
     copy, BufReader, BufWriter, CancelHandle, Canceller, OwnedReadHalf, OwnedWriteHalf,
     PrefixedReadIo, Split, Splitable,
 };
+#[cfg(all(target_os = "linux", feature = "splice"))]
+pub use util::{zero_copy, zero_copy_from_pipe, zero_copy_to_pipe};
 #[cfg(feature = "poll-io")]
 /// Convert a completion-based io to a poll-based io.
 pub trait IntoPollIo: Sized {
