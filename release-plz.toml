@@ -1,0 +1,33 @@
+[workspace]
+allow_dirty = false
+changelog_update = true
+dependencies_update = true
+git_release_enable = false
+pr_labels = ["release"]
+publish_allow_dirty = false
+semver_check = true
+publish_timeout = "10m"
+
+[[package]]
+name = "monoio"
+changelog_include = ["monoio-macros"]
+changelog_path = "CHANGELOG.md"
+changelog_update = true
+git_release_enable = true
+publish = true
+
+[[package]]
+name = "monoio-macros"
+changelog_include = []
+changelog_path = "monoio-macros/CHANGELOG.md"
+changelog_update = true
+git_release_enable = true
+publish = true
+
+[[package]]
+name = "monoio-compat"
+changelog_include = []
+changelog_path = "monoio-compat/CHANGELOG.md"
+changelog_update = true
+git_release_enable = true
+publish = true
