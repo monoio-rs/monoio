@@ -22,7 +22,7 @@ fn detect_uring_inner() -> bool {
     }
 
     use io_uring::opcode::*;
-    auto_const_array::auto_const_array! {
+    auto_array::auto_array!(
         const USED_OP: [u8; _] = [
             Accept::CODE,
             AsyncCancel::CODE,
@@ -53,7 +53,7 @@ fn detect_uring_inner() -> bool {
             Write::CODE,
             Writev::CODE,
         ];
-    }
+    );
 
     let uring = err_to_false!(io_uring::IoUring::new(2));
     let mut probe = io_uring::Probe::new();

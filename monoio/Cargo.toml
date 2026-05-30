@@ -14,7 +14,7 @@ version = "0.2.4"
 [dependencies]
 monoio-macros = { version = "0.1.0", path = "../monoio-macros", optional = true }
 
-auto-const-array = "0.2"
+auto_array = "0.1.1"
 rustc-hash = "2.0"
 libc = "0.2"
 pin-project-lite = "0.2"
