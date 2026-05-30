@@ -64,10 +64,10 @@ pub unsafe trait IoBuf: Unpin + 'static {
     unsafe fn slice_unchecked(self, range: impl ops::RangeBounds<usize>) -> Slice<Self>
     where
         Self: Sized,
-    {
+    { unsafe {
         let (begin, end) = parse_range(range, self.bytes_init());
         Slice::new_unchecked(self, begin, end)
-    }
+    }}
 }
 
 unsafe impl IoBuf for Vec<u8> {
@@ -290,10 +290,10 @@ pub unsafe trait IoBufMut: Unpin + 'static {
     unsafe fn slice_mut_unchecked(mut self, range: impl ops::RangeBounds<usize>) -> SliceMut<Self>
     where
         Self: Sized,
-    {
+    { unsafe {
         let (begin, end) = parse_range(range, self.bytes_total());
         SliceMut::new_unchecked(self, begin, end)
-    }
+    }}
 }
 
 unsafe impl IoBufMut for Vec<u8> {
@@ -308,9 +308,9 @@ unsafe impl IoBufMut for Vec<u8> {
     }
 
     #[inline]
-    unsafe fn set_init(&mut self, init_len: usize) {
+    unsafe fn set_init(&mut self, init_len: usize) { unsafe {
         self.set_len(init_len);
-    }
+    }}
 }
 
 unsafe impl IoBufMut for Box<[u8]> {
@@ -371,11 +371,11 @@ unsafe impl IoBufMut for bytes::BytesMut {
     }
 
     #[inline]
-    unsafe fn set_init(&mut self, init_len: usize) {
+    unsafe fn set_init(&mut self, init_len: usize) { unsafe {
         if self.len() < init_len {
             self.set_len(init_len);
         }
-    }
+    }}
 }
 
 unsafe impl<T> IoBufMut for std::mem::ManuallyDrop<T>
@@ -390,9 +390,9 @@ where
         <T as IoBufMut>::bytes_total(self)
     }
 
-    unsafe fn set_init(&mut self, pos: usize) {
+    unsafe fn set_init(&mut self, pos: usize) { unsafe {
         <T as IoBufMut>::set_init(self, pos)
-    }
+    }}
 }
 
 fn parse_range(range: impl ops::RangeBounds<usize>, end: usize) -> (usize, usize) {

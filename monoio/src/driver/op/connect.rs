@@ -195,7 +195,7 @@ impl SocketAddrCRepr {
 #[cfg(windows)]
 pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, i32) {
     match addr {
-        SocketAddr::V4(ref addr) => {
+        SocketAddr::V4(addr) => {
             // `s_addr` is stored as BE on all machine and the array is in BE order.
             // So the native endian conversion method is used so that it's never swapped.
             let sin_addr = unsafe {
@@ -214,7 +214,7 @@ pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, i32) {
             let sockaddr = SocketAddrCRepr { v4: sockaddr_in };
             (sockaddr, std::mem::size_of::<SOCKADDR_IN>() as i32)
         }
-        SocketAddr::V6(ref addr) => {
+        SocketAddr::V6(addr) => {
             let sin6_addr = unsafe {
                 let mut u = std::mem::zeroed::<IN6_ADDR_0>();
                 u.Byte = addr.ip().octets();
@@ -244,7 +244,7 @@ pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, i32) {
 /// Converts a Rust `SocketAddr` into the system representation.
 pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, libc::socklen_t) {
     match addr {
-        SocketAddr::V4(ref addr) => {
+        SocketAddr::V4(addr) => {
             // `s_addr` is stored as BE on all machine and the array is in BE order.
             // So the native endian conversion method is used so that it's never swapped.
             let sin_addr = libc::in_addr {
@@ -271,7 +271,7 @@ pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, libc::socklen_
             let socklen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
             (sockaddr, socklen)
         }
-        SocketAddr::V6(ref addr) => {
+        SocketAddr::V6(addr) => {
             let sockaddr_in6 = libc::sockaddr_in6 {
                 sin6_family: libc::AF_INET6 as libc::sa_family_t,
                 sin6_port: addr.port().to_be(),

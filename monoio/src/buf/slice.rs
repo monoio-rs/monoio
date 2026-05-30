@@ -181,9 +181,9 @@ unsafe impl<T: IoBufMut> IoBufMut for SliceMut<T> {
     }
 
     #[inline]
-    unsafe fn set_init(&mut self, n: usize) {
+    unsafe fn set_init(&mut self, n: usize) { unsafe {
         self.buf.set_init(self.begin + n);
-    }
+    }}
 }
 
 /// An owned view into a contiguous sequence of bytes.

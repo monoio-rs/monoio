@@ -68,7 +68,7 @@ impl RawBuf {
     /// # Safety
     /// make sure the pointer and length is valid when RawBuf is used.
     #[inline]
-    pub unsafe fn new_from_iovec_mut<T: IoVecBufMut>(data: &mut T) -> Option<Self> {
+    pub unsafe fn new_from_iovec_mut<T: IoVecBufMut>(data: &mut T) -> Option<Self> { unsafe {
         #[cfg(unix)]
         {
             if data.write_iovec_len() == 0 {
@@ -85,13 +85,13 @@ impl RawBuf {
             let wsabuf = *data.write_wsabuf_ptr();
             Some(Self::new(wsabuf.buf as *const u8, wsabuf.len as _))
         }
-    }
+    }}
 
     /// Create a new RawBuf with the first iovec part.
     /// # Safety
     /// make sure the pointer and length is valid when RawBuf is used.
     #[inline]
-    pub unsafe fn new_from_iovec<T: IoVecBuf>(data: &T) -> Option<Self> {
+    pub unsafe fn new_from_iovec<T: IoVecBuf>(data: &T) -> Option<Self> { unsafe {
         #[cfg(unix)]
         {
             if data.read_iovec_len() == 0 {
@@ -108,7 +108,7 @@ impl RawBuf {
             let wsabuf = *data.read_wsabuf_ptr();
             Some(Self::new(wsabuf.buf as *const u8, wsabuf.len as _))
         }
-    }
+    }}
 }
 
 /// RawBufVectored behaves like RawBuf.

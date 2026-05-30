@@ -2,7 +2,7 @@
 authors = ["ChiHai <ihciah@gmail.com>", "XuShuai <dyxushuai@gmail.com>"]
 categories = ["asynchronous", "network-programming"]
 description = "A thread per core runtime based on iouring."
-edition = "2021"
+edition = "2024"
 keywords = ["runtime", "iouring", "async"]
 license = "MIT OR Apache-2.0"
 name = "monoio"

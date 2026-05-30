@@ -32,12 +32,12 @@ pub(crate) struct Task<S: 'static> {
 }
 
 impl<S: 'static> Task<S> {
-    unsafe fn from_raw(ptr: NonNull<Header>) -> Task<S> {
+    unsafe fn from_raw(ptr: NonNull<Header>) -> Task<S> { unsafe {
         Task {
             raw: RawTask::from_raw(ptr),
             _p: PhantomData,
         }
-    }
+    }}
 
     fn header(&self) -> &Header {
         self.raw.header()

@@ -82,10 +82,10 @@ impl RawTask {
 
     /// Safety: `dst` must be a `*mut Poll<super::Result<T::Output>>` where `T`
     /// is the future stored by the task.
-    pub(crate) unsafe fn try_read_output(self, dst: *mut (), waker: &Waker) {
+    pub(crate) unsafe fn try_read_output(self, dst: *mut (), waker: &Waker) { unsafe {
         let vtable = self.header().vtable;
         (vtable.try_read_output)(self.ptr, dst, waker);
-    }
+    }}
 
     pub(crate) fn drop_join_handle_slow(self) {
         let vtable = self.header().vtable;
@@ -99,15 +99,15 @@ impl RawTask {
     }
 }
 
-unsafe fn poll<T: Future, S: Schedule>(ptr: NonNull<Header>) {
+unsafe fn poll<T: Future, S: Schedule>(ptr: NonNull<Header>) { unsafe {
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.poll();
-}
+}}
 
-unsafe fn dealloc<T: Future, S: Schedule>(ptr: NonNull<Header>) {
+unsafe fn dealloc<T: Future, S: Schedule>(ptr: NonNull<Header>) { unsafe {
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.dealloc();
-}
+}}
 
 #[cfg(feature = "sync")]
 unsafe fn finish<T: Future, S: Schedule>(ptr: NonNull<Header>, val: *mut ()) {
@@ -120,14 +120,14 @@ unsafe fn try_read_output<T: Future, S: Schedule>(
     ptr: NonNull<Header>,
     dst: *mut (),
     waker: &Waker,
-) {
+) { unsafe {
     let out = &mut *(dst as *mut Poll<T::Output>);
 
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.try_read_output(out, waker);
-}
+}}
 
-unsafe fn drop_join_handle_slow<T: Future, S: Schedule>(ptr: NonNull<Header>) {
+unsafe fn drop_join_handle_slow<T: Future, S: Schedule>(ptr: NonNull<Header>) { unsafe {
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.drop_join_handle_slow()
-}
+}}

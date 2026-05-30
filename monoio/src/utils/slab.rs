@@ -207,12 +207,12 @@ impl<T> Entry<T> {
         matches!(self, Entry::Vacant(_))
     }
 
-    unsafe fn unwrap_unchecked(self) -> T {
+    unsafe fn unwrap_unchecked(self) -> T { unsafe {
         match self {
             Entry::Vacant(_) => std::hint::unreachable_unchecked(),
             Entry::Occupied(inner) => inner,
         }
-    }
+    }}
 }
 
 struct Page<T> {
@@ -253,7 +253,7 @@ impl<T> Page<T> {
     // alloc a slot
     // Safety: after slot is allocated, the caller must guarantee it will be
     // initialized
-    unsafe fn alloc(&mut self) -> Option<usize> {
+    unsafe fn alloc(&mut self) -> Option<usize> { unsafe {
         let next = self.next;
         if self.is_full() {
             // current page is full
@@ -277,14 +277,14 @@ impl<T> Page<T> {
         }
         self.used += 1;
         Some(next)
-    }
+    }}
 
     // set value of the slot
     // Safety: the slot must returned by Self::alloc.
-    unsafe fn set(&mut self, slot: usize, val: T) {
+    unsafe fn set(&mut self, slot: usize, val: T) { unsafe {
         let slot = self.slots.get_unchecked_mut(slot);
         *slot = MaybeUninit::new(Entry::Occupied(val));
-    }
+    }}
 
     fn get(&self, slot: usize) -> Option<&T> {
         if slot >= self.initialized {
