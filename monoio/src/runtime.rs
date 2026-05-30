@@ -351,9 +351,6 @@ impl From<Runtime<TimeDriver<IoUringDriver>>> for FusionRuntime<TimeDriver<IoUri
 ///
 /// # Examples
 ///
-/// In this example, a server is started and `spawn` is used to start a new task
-/// that processes each received connection.
-///
 /// ```no_run
 /// #[monoio::main]
 /// async fn main() {
@@ -380,6 +377,40 @@ where
         ctx.tasks.push(task);
     });
     join
+}
+
+/// Similar to [`spawn()`], but it catches any panic that occurs in the spawned task.
+///
+/// Note that `.await`ing returned `JoinHandle` now returns a `Result<T::Output>`
+/// rather than `T::Output`.
+///
+/// # Examples
+///
+/// ```no_run
+/// #[monoio::main]
+/// async fn main() {
+///     let handle = monoio::spawn_catch_unwind(async {
+///         println!("hello from a background task");
+///     });
+///
+///     // Let the task complete
+///     handle.await.expect("no panic would happen!");
+/// }
+/// ```
+pub fn spawn_catch_unwind<T>(
+    future: T,
+) -> JoinHandle<Result<T::Output, Box<dyn std::any::Any + 'static>>>
+where
+    T: Future + 'static,
+    T::Output: 'static,
+{
+    use futures::{FutureExt, TryFutureExt};
+
+    let future = std::panic::AssertUnwindSafe(future)
+        .catch_unwind()
+        .map_err(|e| e as Box<dyn std::any::Any + 'static>);
+
+    spawn(future)
 }
 
 #[cfg(feature = "sync")]

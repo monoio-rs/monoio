@@ -20,6 +20,7 @@ libc = "0.2"
 pin-project-lite = "0.2"
 socket2 = { version = "0.5", features = ["all"] }
 memchr = "2.7"
+futures = "0.3"
 
 bytes = { version = "1", optional = true }
 flume = { version = "0.11", optional = true }
@@ -55,7 +56,6 @@ nix = { version = "0.29", features = ["sched", "ucontext", "process"], optional 
 io-uring = { version = "0.6", optional = true }
 
 [dev-dependencies]
-futures = "0.3"
 local-sync = "0.0.5"
 tempfile = "3.2"
 
