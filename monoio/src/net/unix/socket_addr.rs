@@ -45,7 +45,12 @@ impl SocketAddr {
         } else if self.sockaddr.sun_path[0] == 0 {
             AddressKind::Abstract(&path[1..len])
         } else {
-            AddressKind::Pathname(OsStr::from_bytes(&path[..len - 1]).as_ref())
+            // Pathname addresses are NUL-terminated. Some platforms (notably
+            // OpenBSD) may return a socklen that covers the full sockaddr_un,
+            // including trailing padding NULs after the terminator.
+            let pathname = &path[..len];
+            let end = pathname.iter().position(|&b| b == 0).unwrap_or(pathname.len());
+            AddressKind::Pathname(OsStr::from_bytes(&pathname[..end]).as_ref())
         }
     }
 
