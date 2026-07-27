@@ -5,7 +5,7 @@ use crate::fs::{file_type::FileType, permissions::FilePermissions};
 pub(crate) struct FileAttr {
     #[cfg(target_os = "linux")]
     pub(crate) stat: libc::stat64,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     pub(crate) stat: libc::stat,
     #[cfg(target_os = "linux")]
     pub(crate) statx_extra_fields: Option<StatxExtraFields>,
@@ -74,7 +74,7 @@ impl From<libc::statx> for FileAttr {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "openbsd"))]
 impl From<libc::stat> for FileAttr {
     fn from(stat: libc::stat) -> Self {
         Self { stat }

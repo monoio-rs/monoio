@@ -640,10 +640,23 @@ impl StreamMeta {
         if let Some(time) = time {
             t = t.with_time(time)
         }
+        // OpenBSD does not expose TCP keepalive interval/retries via socket2.
+        #[cfg(not(target_os = "openbsd"))]
         if let Some(interval) = interval {
             t = t.with_interval(interval)
         }
-        #[cfg(unix)]
+        #[cfg(all(
+            unix,
+            not(any(
+                target_os = "openbsd",
+                target_os = "redox",
+                target_os = "solaris",
+                target_os = "nto",
+                target_os = "espidf",
+                target_os = "vita",
+                target_os = "haiku",
+            ))
+        ))]
         if let Some(retries) = retries {
             t = t.with_retries(retries)
         }
