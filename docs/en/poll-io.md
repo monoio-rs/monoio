@@ -21,7 +21,7 @@ To support these components, Monoio provides:
 
     ```toml
     [dependencies]
-    monoio = { version = "0.2.4", features = ["poll-io"] }
+    monoio = { version = "0.3.0", features = ["poll-io"] }
     ```
 
 2. Import and use `IntoPollIo` to convert `CompIo` to `PollIo`.

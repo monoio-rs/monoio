@@ -7,11 +7,11 @@ keywords = ["runtime", "iouring", "async"]
 license = "MIT OR Apache-2.0"
 name = "monoio-compat"
 readme = "README.md"
-repository = "https://github.com/bytedance/monoio"
-version = "0.2.2"
+repository = "https://github.com/monoio-rs/monoio"
+version = "0.3.0"
 
 [dependencies]
-monoio = { version = "0.2.3", path = "../monoio", default-features = false, features = ["legacy"] }
+monoio = { version = "0.3.0", path = "../monoio", default-features = false, features = ["legacy"] }
 reusable-box-future = "0.2"
 tokio = { version = "1", default-features = false, features = ["io-util"] }
 
@@ -19,7 +19,7 @@ hyper = { version = "1.1", optional = true }
 pin-project-lite = { version = "0.2", optional = true }
 
 [dev-dependencies]
-monoio = { version = "0.2.3", path = "../monoio", features = [
+monoio = { version = "0.3.0", path = "../monoio", features = [
     "async-cancel",
     "macros",
 ] }

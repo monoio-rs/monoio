@@ -21,7 +21,7 @@ Poll IO 是 Monoio 中提供的一种新的 IO Driver 相关能力，借助这�
 
     ```toml
     [dependencies]
-    monoio = { version = "0.2.4", features = ["poll-io"] }
+    monoio = { version = "0.3.0", features = ["poll-io"] }
     ```
 
 2. 引入并使用 `IntoPollIo` 来将 `CompIo` 转换为 `PollIo`。
