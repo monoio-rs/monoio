@@ -14,11 +14,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
+
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny --version 0.20.2
 
       - name: Run cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          log-level: warn
-          command: check
-          arguments: --all-features
+        run: cargo deny --log-level warn --all-features check

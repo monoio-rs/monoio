@@ -14,46 +14,54 @@ env:
   TOOLCHAIN_PROFILE: minimal
   CARGO_TERM_COLOR: always
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    env:
+      RUST_TOOLCHAIN: ${{ matrix.target == 'i686-pc-windows-gnu' && format('{0}-i686-pc-windows-gnu', matrix.channel) || matrix.channel }}
+      TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
       - name: Install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: ${{ env.TOOLCHAIN_PROFILE }}
-          toolchain: ${{ matrix.target == 'i686-pc-windows-gnu' && format('{0}-i686-pc-windows-gnu', matrix.channel) || matrix.channel }}
-          target: ${{ matrix.target }}
-          override: true
-          components: rustfmt, clippy
+        id: toolchain
+        run: |
+          extra_args=()
+          if [[ "$TARGET" == "i686-pc-windows-gnu" ]]; then
+            # The 32-bit GNU host toolchain runs via WoW64 on Windows runners.
+            extra_args+=(--force-non-host)
+          fi
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile "$TOOLCHAIN_PROFILE" --target "$TARGET" --component rustfmt,clippy "${extra_args[@]}"
+          rustup override set "$RUST_TOOLCHAIN"
+          echo "rustc=$(rustc --version)" >> "$GITHUB_OUTPUT"
       - name: Cache
-        uses: Swatinem/rust-cache@v1
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ steps.toolchain.outputs.rustc }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-${{ steps.toolchain.outputs.rustc }}-cargo-
       - name: Run cargo fmt
         if: matrix.channel == 'nightly'
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
       - name: Run cargo clippy
         if: matrix.channel == 'nightly'
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+        run: cargo clippy -- -D warnings
       - name: Run cargo check with no default features
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --no-default-features
+        run: cargo check --no-default-features
       - env:
           CHANNEL: ${{ matrix.channel }}
           CROSS: ${{ !startsWith(matrix.target, 'x86_64') && contains(matrix.target, 'linux') && '1' || '0' }}
           TARGET: ${{ matrix.target }}
           OS: ${{ matrix.os }}
           PROJECT_DIR: ${{ github.workspace }}
-          NO_RUN: ${{ matrix.no_run }}
         run: sh .github/workflows/ci.sh
 
     strategy:
