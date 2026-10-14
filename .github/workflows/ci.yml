@@ -22,7 +22,7 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     env:
-      RUST_TOOLCHAIN: ${{ matrix.target == 'i686-pc-windows-gnu' && format('{0}-x86_64-pc-windows-gnu', matrix.channel) || matrix.channel }}
+      RUST_TOOLCHAIN: ${{ matrix.channel }}
       TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout sources
@@ -40,7 +40,9 @@ jobs:
           C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
           C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
           C:/msys64/usr/bin/bash.exe -lc 'pacman -S --noconfirm --needed mingw-w64-i686-gcc'
+          echo "C:/msys64/mingw32/bin" >> "$GITHUB_PATH"
           echo "CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER=C:/msys64/mingw32/bin/gcc.exe" >> "$GITHUB_ENV"
+          C:/msys64/mingw32/bin/gcc.exe --version
       - name: Cache
         uses: actions/cache@v6
         with:
