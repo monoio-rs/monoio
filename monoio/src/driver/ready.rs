@@ -157,6 +157,7 @@ impl Interest {
     /// Add together two `Interest` values.
     ///
     /// This function works from a `const` context.
+    #[allow(dead_code)]
     pub(crate) const fn add(self, other: Interest) -> Interest {
         Interest(self.0.add(other.0))
     }

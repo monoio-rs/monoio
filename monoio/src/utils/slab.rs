@@ -47,10 +47,7 @@ impl<T> Slab<T> {
         let page_id = get_page_id(key);
         // here we make 2 mut ref so we must make it safe.
         let slab = unsafe { &mut *(self as *mut Slab<T>) };
-        let page = match unsafe { self.pages.get_unchecked_mut(page_id) } {
-            Some(page) => page,
-            None => return None,
-        };
+        let page = unsafe { self.pages.get_unchecked_mut(page_id) }.as_mut()?;
         let index = key - page.prev_len;
         match page.get_entry_mut(index) {
             None => None,
@@ -93,10 +90,7 @@ impl<T> Slab<T> {
     #[allow(unused)]
     pub(crate) fn remove(&mut self, key: usize) -> Option<T> {
         let page_id = get_page_id(key);
-        let page = match unsafe { self.pages.get_unchecked_mut(page_id) } {
-            Some(page) => page,
-            None => return None,
-        };
+        let page = unsafe { self.pages.get_unchecked_mut(page_id) }.as_mut()?;
         let val = page.remove(key - page.prev_len);
         self.mark_remove();
         val
