@@ -7,7 +7,7 @@ keywords = ["runtime", "iouring", "async"]
 license = "MIT OR Apache-2.0"
 name = "monoio-macros"
 readme = "README.md"
-repository = "https://github.com/bytedance/monoio"
+repository = "https://github.com/monoio-rs/monoio"
 version = "0.1.0"
 
 [lib]
