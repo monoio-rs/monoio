@@ -1,4 +1,4 @@
-use std::{ffi::CString, mem::MaybeUninit, path::Path};
+use std::{ffi::CString, mem::MaybeUninit, path::Path, sync::atomic::AtomicBool};
 
 #[cfg(all(target_os = "linux", feature = "iouring"))]
 use io_uring::{opcode, types};
@@ -9,6 +9,9 @@ use libc::statx;
 use super::{driver::ready::Direction, MaybeFd};
 use super::{Op, OpAble};
 use crate::driver::{shared_fd::SharedFd, util::cstr};
+
+// Mark the `statx` is supported or not
+static IS_STATX_SUPPORT: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug)]
 pub(crate) struct Statx<T> {
@@ -84,15 +87,37 @@ impl OpAble for FdStatx {
 
     #[cfg(all(any(feature = "legacy", feature = "poll-io"), target_os = "linux"))]
     fn legacy_call(&mut self) -> std::io::Result<MaybeFd> {
-        use std::os::fd::AsRawFd;
+        use std::{os::fd::AsRawFd, sync::atomic::Ordering};
 
-        crate::syscall!(statx@NON_FD(
-            self.inner.as_raw_fd(),
-            c"".as_ptr(),
-            libc::AT_EMPTY_PATH,
-            libc::STATX_ALL,
-            self.statx_buf.as_mut_ptr() as *mut _
-        ))
+        // If `statx` is not supported, return immediately with error.
+        if !IS_STATX_SUPPORT.load(Ordering::Relaxed) {
+            return Err(std::io::Error::from_raw_os_error(libc::ENOSYS));
+        }
+
+        // Do raw syscall, which is not refer to the libc symbol.
+        let res = unsafe {
+            libc::syscall(
+                libc::SYS_statx,
+                self.inner.as_raw_fd(),
+                c"".as_ptr(),
+                libc::AT_EMPTY_PATH,
+                libc::STATX_BASIC_STATS | libc::STATX_BTIME,
+                self.statx_buf.as_mut_ptr() as *mut _,
+            )
+        };
+
+        // Check the `statx` is supported or not.
+        if res == -1 {
+            let err = std::io::Error::last_os_error();
+
+            if matches!(err.raw_os_error(), Some(libc::ENOSYS) | Some(libc::ENOTSUP)) {
+                IS_STATX_SUPPORT.store(false, Ordering::Relaxed);
+            }
+
+            return Err(err);
+        }
+
+        Ok(MaybeFd::new_non_fd(res as _))
     }
 
     #[cfg(all(any(feature = "legacy", feature = "poll-io"), windows))]
@@ -173,13 +198,36 @@ impl OpAble for PathStatx {
 
     #[cfg(all(any(feature = "legacy", feature = "poll-io"), target_os = "linux"))]
     fn legacy_call(&mut self) -> std::io::Result<MaybeFd> {
-        crate::syscall!(statx@NON_FD(
-            libc::AT_FDCWD,
-            self.inner.as_ptr(),
-            self.flags,
-            libc::STATX_ALL,
-            self.statx_buf.as_mut_ptr() as *mut _
-        ))
+        use std::sync::atomic::Ordering;
+        // If `statx` is not supported, return immediately with error.
+        if !IS_STATX_SUPPORT.load(Ordering::Relaxed) {
+            return Err(std::io::Error::from_raw_os_error(libc::ENOSYS));
+        }
+
+        // Do raw syscall, which is not refer to the libc symbol.
+        let res = unsafe {
+            libc::syscall(
+                libc::SYS_statx,
+                libc::AT_FDCWD,
+                self.inner.as_ptr(),
+                self.flags,
+                libc::STATX_BASIC_STATS | libc::STATX_BTIME,
+                self.statx_buf.as_mut_ptr() as *mut _,
+            )
+        };
+
+        // Check the `statx` is supported or not.
+        if res == -1 {
+            let err = std::io::Error::last_os_error();
+
+            if matches!(err.raw_os_error(), Some(libc::ENOSYS) | Some(libc::ENOTSUP)) {
+                IS_STATX_SUPPORT.store(false, Ordering::Relaxed);
+            }
+
+            return Err(err);
+        }
+
+        Ok(MaybeFd::new_non_fd(res as _))
     }
 
     #[cfg(all(any(feature = "legacy", feature = "poll-io"), windows))]

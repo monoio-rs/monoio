@@ -43,11 +43,24 @@ pub async fn metadata<P: AsRef<Path>>(path: P) -> std::io::Result<Metadata> {
     let flags = libc::AT_STATX_SYNC_AS_STAT;
 
     #[cfg(target_os = "linux")]
-    let op = Op::statx_using_path(path, flags)?;
+    match Op::statx_using_path(&path, flags) {
+        Ok(op) => op.result().await.map(FileAttr::from).map(Metadata),
+        Err(e) if matches!(e.raw_os_error(), Some(libc::ENOSYS) | Some(libc::ENOTSUP)) => {
+            use std::os::unix::ffi::OsStrExt;
+            let path = std::ffi::CString::new(path.as_ref().as_os_str().as_bytes())?;
+
+            // statx is not support, use fstatat64 instead
+            let mut buf: libc::stat64 = unsafe { std::mem::zeroed() };
+            crate::syscall!(fstatat64@RAW(libc::AT_FDCWD, path.as_ptr(), &mut buf, libc::AT_SYMLINK_NOFOLLOW))?;
+
+            Ok(Metadata(FileAttr::from(buf)))
+        }
+        Err(e) => Err(e),
+    }
 
     #[cfg(target_os = "macos")]
     let op = Op::statx_using_path(path, true)?;
-
+    #[cfg(target_os = "macos")]
     op.result().await.map(FileAttr::from).map(Metadata)
 }
 
@@ -83,11 +96,24 @@ pub async fn symlink_metadata<P: AsRef<Path>>(path: P) -> std::io::Result<Metada
     let flags = libc::AT_STATX_SYNC_AS_STAT | libc::AT_SYMLINK_NOFOLLOW;
 
     #[cfg(target_os = "linux")]
-    let op = Op::statx_using_path(path, flags)?;
+    match Op::statx_using_path(&path, flags) {
+        Ok(op) => op.result().await.map(FileAttr::from).map(Metadata),
+        Err(e) if matches!(e.raw_os_error(), Some(libc::ENOSYS) | Some(libc::ENOTSUP)) => {
+            use std::os::unix::ffi::OsStrExt;
+            let path = std::ffi::CString::new(path.as_ref().as_os_str().as_bytes())?;
+
+            // statx is not support, use fstatat64 instead
+            let mut buf: libc::stat64 = unsafe { std::mem::zeroed() };
+            crate::syscall!(fstatat64@RAW(libc::AT_FDCWD, path.as_ptr(), &mut buf, 0))?;
+
+            Ok(Metadata(FileAttr::from(buf)))
+        }
+        Err(e) => Err(e),
+    }
 
     #[cfg(target_os = "macos")]
     let op = Op::statx_using_path(path, false)?;
-
+    #[cfg(target_os = "macos")]
     op.result().await.map(FileAttr::from).map(Metadata)
 }
 
