@@ -112,6 +112,29 @@ async fn create_very_long_path() {
     assert!(path.exists());
 }
 
+#[monoio::test_all]
+async fn create_dir_all_concurrent_race() {
+    // Test that concurrent create_dir_all calls to the same path don't fail
+    // with AlreadyExists errors. This is a regression test for the race
+    // condition where two tasks creating the same nested directory could
+    // interleave and cause one to fail.
+    let temp_dir = tempdir().unwrap();
+    let path = temp_dir.path().join("a/b/c/d/e");
+
+    let p1 = path.clone();
+    let p2 = path.clone();
+
+    let t1 = monoio::spawn(async move { fs::create_dir_all(&p1).await });
+    let t2 = monoio::spawn(async move { fs::create_dir_all(&p2).await });
+
+    let r1 = t1.await;
+    let r2 = t2.await;
+
+    assert!(r1.is_ok(), "first task failed: {:?}", r1);
+    assert!(r2.is_ok(), "second task failed: {:?}", r2);
+    assert!(path.exists());
+}
+
 #[cfg(unix)]
 #[monoio::test_all]
 async fn create_directory_with_permission_issue() {
