@@ -330,8 +330,10 @@ pub(crate) mod impls {
         let mut bytes_write = 0;
 
         let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
-        overlapped.Anonymous.Anonymous.Offset = offset as u32; // Lower 32 bits of the offset
-        overlapped.Anonymous.Anonymous.OffsetHigh = (offset >> 32) as u32; // Higher 32 bits of the offset
+        // Lower 32 bits of the offset
+        overlapped.Anonymous.Anonymous.Offset = offset as u32;
+        // Higher 32 bits of the offset
+        overlapped.Anonymous.Anonymous.OffsetHigh = (offset >> 32) as u32;
 
         let ret = unsafe {
             WriteFile(
