@@ -100,7 +100,7 @@ async fn rw_able() {
     assert!(conn.readable(false).await.is_ok());
 }
 
-//essentially the same as rw_able, but test split stream instead of original stream
+// essentially the same as rw_able, but test split stream instead of original stream
 #[monoio::test_all(timer_enabled = true)]
 async fn split_rw_able() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
