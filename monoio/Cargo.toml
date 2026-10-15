@@ -18,7 +18,7 @@ auto-const-array = "0.2"
 rustc-hash = "2.0"
 libc = "0.2"
 pin-project-lite = "0.2"
-socket2 = { version = "0.5", features = ["all"] }
+socket2 = { version = "0.6", features = ["all"] }
 memchr = "2.7"
 
 bytes = { version = "1", optional = true }
