@@ -4,29 +4,34 @@ on:
   push:
     paths:
       - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pr-audit.yml'
   pull_request:
     paths:
       - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pr-audit.yml'
+
+permissions:
+  contents: read
 
 jobs:
   security-audit:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'ci skip')"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup override set stable
 
       - name: Install cargo-audit
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-audit
+        run: cargo install --locked cargo-audit --version 0.22.2
 
       - name: Generate lockfile
-        uses: actions-rs/cargo@v1
-        with:
-          command: generate-lockfile
+        run: cargo generate-lockfile
 
       - name: Audit dependencies
-        uses: actions-rs/cargo@v1
-        with:
-          command: audit
+        run: cargo audit
