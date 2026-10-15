@@ -171,8 +171,8 @@ where
     reader_le_impl!(ReadI32LEFuture, i32, cancelable_read_i32_le);
     reader_le_impl!(ReadI64LEFuture, i64, cancelable_read_i64_le);
     reader_le_impl!(ReadI128LEFuture, i128, cancelable_read_i128_le);
-    reader_be_impl!(ReadF32LEFuture, f32, cancelable_read_f32_le);
-    reader_be_impl!(ReadF64LEFuture, f64, cancelable_read_f64_le);
+    reader_le_impl!(ReadF32LEFuture, f32, cancelable_read_f32_le);
+    reader_le_impl!(ReadF64LEFuture, f64, cancelable_read_f64_le);
 }
 
 /// CancelableAsyncWriteRentExt
