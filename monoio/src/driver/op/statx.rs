@@ -17,9 +17,9 @@ pub(crate) struct Statx<T> {
     flags: i32,
     #[cfg(target_os = "linux")]
     statx_buf: Box<MaybeUninit<statx>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     stat_buf: Box<MaybeUninit<libc::stat>>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     follow_symlinks: bool,
 }
 
@@ -44,7 +44,7 @@ impl Op<FdStatx> {
         Ok(unsafe { MaybeUninit::assume_init(*complete.data.statx_buf) })
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     pub(crate) fn statx_using_fd(fd: SharedFd, follow_symlinks: bool) -> std::io::Result<Self> {
         Op::submit_with(Statx {
             inner: fd,
@@ -53,7 +53,7 @@ impl Op<FdStatx> {
         })
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     pub(crate) async fn result(self) -> std::io::Result<libc::stat> {
         let complete = self.await;
         complete.meta.result?;
@@ -100,7 +100,10 @@ impl OpAble for FdStatx {
         unimplemented!()
     }
 
-    #[cfg(all(any(feature = "legacy", feature = "poll-io"), target_os = "macos"))]
+    #[cfg(all(
+        any(feature = "legacy", feature = "poll-io"),
+        any(target_os = "macos", target_os = "openbsd")
+    ))]
     fn legacy_call(&mut self) -> std::io::Result<MaybeFd> {
         use std::os::fd::AsRawFd;
 
@@ -133,7 +136,7 @@ impl Op<PathStatx> {
         Ok(unsafe { MaybeUninit::assume_init(*complete.data.statx_buf) })
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     pub(crate) fn statx_using_path<P: AsRef<Path>>(
         path: P,
         follow_symlinks: bool,
@@ -146,7 +149,7 @@ impl Op<PathStatx> {
         })
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     pub(crate) async fn result(self) -> std::io::Result<libc::stat> {
         let complete = self.await;
         complete.meta.result?;
@@ -187,7 +190,10 @@ impl OpAble for PathStatx {
         unimplemented!()
     }
 
-    #[cfg(all(any(feature = "legacy", feature = "poll-io"), target_os = "macos"))]
+    #[cfg(all(
+        any(feature = "legacy", feature = "poll-io"),
+        any(target_os = "macos", target_os = "openbsd")
+    ))]
     fn legacy_call(&mut self) -> std::io::Result<MaybeFd> {
         if self.follow_symlinks {
             crate::syscall!(stat@NON_FD(

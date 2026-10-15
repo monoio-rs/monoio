@@ -63,7 +63,7 @@ pub(crate) async fn metadata(fd: SharedFd) -> std::io::Result<Metadata> {
     let flags = libc::AT_STATX_SYNC_AS_STAT | libc::AT_EMPTY_PATH;
     #[cfg(target_os = "linux")]
     let op = Op::statx_using_fd(fd, flags)?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     let op = Op::statx_using_fd(fd, true)?;
 
     op.result().await.map(FileAttr::from).map(Metadata)

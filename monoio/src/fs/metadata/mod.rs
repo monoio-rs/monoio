@@ -45,7 +45,7 @@ pub async fn metadata<P: AsRef<Path>>(path: P) -> std::io::Result<Metadata> {
     #[cfg(target_os = "linux")]
     let op = Op::statx_using_path(path, flags)?;
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     let op = Op::statx_using_path(path, true)?;
 
     op.result().await.map(FileAttr::from).map(Metadata)
@@ -85,7 +85,7 @@ pub async fn symlink_metadata<P: AsRef<Path>>(path: P) -> std::io::Result<Metada
     #[cfg(target_os = "linux")]
     let op = Op::statx_using_path(path, flags)?;
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "openbsd"))]
     let op = Op::statx_using_path(path, false)?;
 
     op.result().await.map(FileAttr::from).map(Metadata)
@@ -449,6 +449,73 @@ impl MetadataExt for Metadata {
 
     fn ctime_nsec(&self) -> i64 {
         self.0.stat.st_ctime_nsec
+    }
+
+    fn blksize(&self) -> u64 {
+        self.0.stat.st_blksize as u64
+    }
+
+    fn blocks(&self) -> u64 {
+        self.0.stat.st_blocks as u64
+    }
+}
+
+#[cfg(all(target_os = "openbsd", not(target_pointer_width = "32")))]
+impl MetadataExt for Metadata {
+    fn dev(&self) -> u64 {
+        self.0.stat.st_dev as u64
+    }
+
+    fn ino(&self) -> u64 {
+        self.0.stat.st_ino
+    }
+
+    fn mode(&self) -> u32 {
+        self.0.stat.st_mode as u32
+    }
+
+    fn nlink(&self) -> u64 {
+        self.0.stat.st_nlink as u64
+    }
+
+    fn uid(&self) -> u32 {
+        self.0.stat.st_uid
+    }
+
+    fn gid(&self) -> u32 {
+        self.0.stat.st_gid
+    }
+
+    fn rdev(&self) -> u64 {
+        self.0.stat.st_rdev as u64
+    }
+
+    fn size(&self) -> u64 {
+        self.0.stat.st_size as u64
+    }
+
+    fn atime(&self) -> i64 {
+        self.0.stat.st_atime
+    }
+
+    fn atime_nsec(&self) -> i64 {
+        self.0.stat.st_atime_nsec as i64
+    }
+
+    fn mtime(&self) -> i64 {
+        self.0.stat.st_mtime
+    }
+
+    fn mtime_nsec(&self) -> i64 {
+        self.0.stat.st_mtime_nsec as i64
+    }
+
+    fn ctime(&self) -> i64 {
+        self.0.stat.st_ctime
+    }
+
+    fn ctime_nsec(&self) -> i64 {
+        self.0.stat.st_ctime_nsec as i64
     }
 
     fn blksize(&self) -> u64 {
