@@ -9,7 +9,9 @@ use monoio::{
 async fn main() {
     let bind_addr = "127.0.0.1:11990".parse::<SocketAddr>().unwrap();
     let opts = monoio::net::ListenerOpts::default().tcp_fast_open(true);
-    let listener = TcpListener::bind_with_config(bind_addr, &opts).unwrap();
+    let listener = TcpListener::async_bind_with_config(bind_addr, &opts)
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
     let (tx, rx) = local_sync::oneshot::channel();
     monoio::spawn(async move {

@@ -43,7 +43,7 @@ async fn main() {
     // a good way.
     let canceller = Canceller::new();
     let timeout_fut = monoio::time::sleep(Duration::from_millis(100));
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let listener = TcpListener::async_bind("127.0.0.1:0").await.unwrap();
     let mut io_fut = pin!(listener.cancelable_accept(canceller.handle()));
 
     monoio::select! {

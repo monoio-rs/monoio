@@ -15,7 +15,7 @@ version = "0.2.4"
 monoio-macros = { version = "0.1.0", path = "../monoio-macros", optional = true }
 
 auto-const-array = "0.2"
-rustc-hash = "2.0"
+rustc-hash = "2.1"
 libc = "0.2"
 pin-project-lite = "0.2"
 socket2 = { version = "0.5", features = ["all"] }
@@ -49,10 +49,14 @@ windows-sys = { version = "0.48.0", features = [
 
 # unix dependencies
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["sched", "ucontext", "process"], optional = true }
+nix = { version = "0.29", features = [
+    "sched",
+    "ucontext",
+    "process",
+], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-io-uring = { version = "0.6", optional = true }
+io-uring = { version = "0.7", optional = true }
 
 [dev-dependencies]
 futures = "0.3"
@@ -78,6 +82,10 @@ unlinkat = []
 renameat = []
 # symlinkat op(requires kernel 5.15+)
 symlinkat = []
+# listen op(requires kernel 6.11+)
+listen = []
+# bind op(requires kernel 6.11+)
+bind = []
 # enable `async main` macros support
 macros = ["monoio-macros"]
 # allow waker to be sent across threads

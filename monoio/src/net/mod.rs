@@ -27,10 +27,13 @@ use {
 
 // Copied from mio.
 #[cfg(unix)]
-pub(crate) fn new_socket(
-    domain: libc::c_int,
-    socket_type: libc::c_int,
+pub(crate) async fn new_socket(
+    domain: socket2::Domain,
+    socket_type: socket2::Type,
 ) -> std::io::Result<libc::c_int> {
+    #[cfg(unix)]
+    use crate::driver::op::Op;
+
     #[cfg(any(
         target_os = "android",
         target_os = "dragonfly",
@@ -39,21 +42,25 @@ pub(crate) fn new_socket(
         target_os = "netbsd",
         target_os = "openbsd"
     ))]
-    let socket_type = socket_type | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC;
+    let socket_type = socket_type.cloexec().nonblocking();
 
     #[cfg(target_os = "linux")]
     let socket_type = {
         if crate::driver::op::is_legacy() {
-            socket_type | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK
+            socket_type.cloexec().nonblocking()
         } else {
-            socket_type | libc::SOCK_CLOEXEC
+            socket_type.cloexec()
         }
     };
 
     // Gives a warning for platforms without SOCK_NONBLOCK.
     #[allow(clippy::let_and_return)]
     #[cfg(unix)]
-    let socket = crate::syscall!(socket@RAW(domain, socket_type, 0));
+    let socket = Op::socket(domain, socket_type, None)?
+        .await
+        .meta
+        .result
+        .map(|s| s.into_inner() as i32);
 
     // Mimic `libstd` and set `SO_NOSIGPIPE` on apple systems.
     #[cfg(target_vendor = "apple")]

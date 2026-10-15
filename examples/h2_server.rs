@@ -48,7 +48,7 @@ async fn handle_request(
 
 #[monoio::main(threads = 2)]
 async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:5928").unwrap();
+    let listener = TcpListener::async_bind("127.0.0.1:5928").await.unwrap();
     println!("listening on {:?}", listener.local_addr());
 
     loop {

@@ -8,15 +8,13 @@ use std::{
 
 #[cfg(unix)]
 use {
-    libc::{shutdown, AF_INET, AF_INET6, SHUT_WR, SOCK_STREAM},
+    libc::{shutdown, AF_INET, AF_INET6, SHUT_WR},
     std::os::unix::prelude::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
 };
 #[cfg(windows)]
 use {
     std::os::windows::prelude::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket},
-    windows_sys::Win32::Networking::WinSock::{
-        shutdown, AF_INET, AF_INET6, SD_SEND as SHUT_WR, SOCK_STREAM,
-    },
+    windows_sys::Win32::Networking::WinSock::{shutdown, AF_INET, AF_INET6, SD_SEND as SHUT_WR},
 };
 
 use crate::{
@@ -119,7 +117,11 @@ impl TcpStream {
             SocketAddr::V4(_) => AF_INET,
             SocketAddr::V6(_) => AF_INET6,
         };
-        let socket = crate::net::new_socket(domain, SOCK_STREAM)?;
+
+        #[cfg(windows)]
+        let socket = crate::net::new_socket(domain, socket2::Type::STREAM.into())?;
+        #[cfg(unix)]
+        let socket = crate::net::new_socket(domain.into(), socket2::Type::STREAM).await?;
         #[allow(unused_mut)]
         let mut tfo = opts.tcp_fast_open;
 

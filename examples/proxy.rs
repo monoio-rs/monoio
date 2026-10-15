@@ -10,7 +10,8 @@ const TARGET_ADDRESS: &str = "127.0.0.1:50006";
 
 #[monoio::main(entries = 512, timer_enabled = false)]
 async fn main() {
-    let listener = TcpListener::bind(LISTEN_ADDRESS)
+    let listener = TcpListener::async_bind(LISTEN_ADDRESS)
+        .await
         .unwrap_or_else(|_| panic!("[Server] Unable to bind to {LISTEN_ADDRESS}"));
     loop {
         if let Ok((in_conn, _addr)) = listener.accept().await {
