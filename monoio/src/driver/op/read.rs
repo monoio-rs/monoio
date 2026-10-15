@@ -281,7 +281,8 @@ impl<T: IoVecBufMut> OpAble for ReadVecAt<T> {
         let mut flags = 0;
         let ret = unsafe {
             let mut overlapped: OVERLAPPED = std::mem::zeroed();
-            overlapped.Anonymous.Anonymous.Offset = seek_offset as u32; // Lower 32 bits of the offset
+            overlapped.Anonymous.Anonymous.Offset = seek_offset as u32; // Lower 32 bits of the
+                                                                        // offset
             overlapped.Anonymous.Anonymous.OffsetHigh = (seek_offset >> 32) as u32; // Higher 32 bits of the offset
 
             WSARecv(
@@ -394,7 +395,8 @@ pub(crate) mod impls {
             // see https://learn.microsoft.com/zh-cn/windows/win32/api/fileapi/nf-fileapi-readfile
             let mut overlapped: OVERLAPPED = std::mem::zeroed();
             overlapped.Anonymous.Anonymous.Offset = offset as u32; // Lower 32 bits of the offset
-            overlapped.Anonymous.Anonymous.OffsetHigh = (offset >> 32) as u32; // Higher 32 bits of the offset
+            overlapped.Anonymous.Anonymous.OffsetHigh = (offset >> 32) as u32; // Higher 32 bits of
+                                                                               // the offset
 
             ReadFile(
                 handle,
