@@ -4,7 +4,7 @@ use std::io;
 
 use crate::io::{AsyncReadRent, AsyncWriteRent, AsyncWriteRentExt};
 #[cfg(unix)]
-use crate::net::unix::new_pipe;
+use crate::net::unix::{new_pipe, Pipe};
 
 const BUF_SIZE: usize = 64 * 1024;
 
@@ -93,6 +93,51 @@ pub async fn zero_copy<SRC: crate::io::as_fd::AsReadFd, DST: crate::io::as_fd::A
             let written = writer.splice_from_pipe(&mut pr, to_write).await?;
             to_write -= written;
         }
+    }
+    Ok(transferred)
+}
+
+/// Copy with splice to pipe.
+#[cfg(all(target_os = "linux", feature = "splice"))]
+pub async fn zero_copy_to_pipe<SRC: crate::io::as_fd::AsReadFd>(
+    reader: &mut SRC,
+    writer: &mut Pipe,
+) -> io::Result<u64> {
+    use crate::{
+        driver::op::Op,
+        io::splice::{SpliceDestination, SpliceSource},
+        net::Pipe,
+    };
+
+    let mut transferred: u64 = 0;
+    loop {
+        let written = reader.splice_to_pipe(writer, BUF_SIZE as u32).await?;
+        if written == 0 {
+            break;
+        }
+        transferred += written as u64;
+    }
+    Ok(transferred)
+}
+
+/// Copy with splice from pipe.
+#[cfg(all(target_os = "linux", feature = "splice"))]
+pub async fn zero_copy_from_pipe<DST: crate::io::as_fd::AsWriteFd>(
+    reader: &mut Pipe,
+    writer: &mut DST,
+) -> io::Result<u64> {
+    use crate::{
+        driver::op::Op,
+        io::splice::{SpliceDestination, SpliceSource},
+    };
+
+    let mut transferred: u64 = 0;
+    loop {
+        let written = writer.splice_from_pipe(reader, BUF_SIZE as u32).await?;
+        if written == 0 {
+            break;
+        }
+        transferred += written as u64;
     }
     Ok(transferred)
 }
