@@ -522,6 +522,8 @@ impl Drop for Inner {
         let fd = self.fd;
         let state = unsafe { &mut *self.state.get() };
         #[allow(unreachable_patterns)]
+        #[allow(clippy::collapsible_match)]
+        // false positive: the `if` is a match guard, not collapsible
         match state {
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             State::Uring(UringState::Init) | State::Uring(UringState::Waiting(..))

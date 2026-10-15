@@ -47,6 +47,7 @@ impl<T> Slab<T> {
         let page_id = get_page_id(key);
         // here we make 2 mut ref so we must make it safe.
         let slab = unsafe { &mut *(self as *mut Slab<T>) };
+        #[allow(clippy::question_mark)]
         let page = match unsafe { self.pages.get_unchecked_mut(page_id) } {
             Some(page) => page,
             None => return None,
@@ -93,6 +94,7 @@ impl<T> Slab<T> {
     #[allow(unused)]
     pub(crate) fn remove(&mut self, key: usize) -> Option<T> {
         let page_id = get_page_id(key);
+        #[allow(clippy::question_mark)]
         let page = match unsafe { self.pages.get_unchecked_mut(page_id) } {
             Some(page) => page,
             None => return None,
