@@ -49,7 +49,7 @@ windows-sys = { version = "0.48.0", features = [
 
 # unix dependencies
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["sched", "ucontext", "process"], optional = true }
+nix = { version = "0.31", features = ["sched", "ucontext", "process"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { version = "0.6", optional = true }
