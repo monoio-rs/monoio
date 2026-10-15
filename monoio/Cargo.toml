@@ -23,7 +23,7 @@ memchr = "2.7"
 
 bytes = { version = "1", optional = true }
 flume = { version = "0.11", optional = true }
-mio = { version = "0.8", features = [
+mio = { version = "1.2", features = [
     "net",
     "os-poll",
     "os-ext",
