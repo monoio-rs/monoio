@@ -458,7 +458,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_all(&self) -> io::Result<()> {
-        let op = Op::fsync(&self.fd).unwrap();
+        let op = Op::fsync(&self.fd)?;
         let completion = op.await;
 
         completion.meta.result?;
@@ -498,7 +498,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_data(&self) -> io::Result<()> {
-        let op = Op::datasync(&self.fd).unwrap();
+        let op = Op::datasync(&self.fd)?;
         let completion = op.await;
 
         completion.meta.result?;

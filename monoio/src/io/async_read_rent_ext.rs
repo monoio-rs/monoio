@@ -57,7 +57,7 @@ pub trait AsyncReadRentExt {
     reader_trait!(ReadU16Future, u16, read_u16);
     reader_trait!(ReadU32Future, u32, read_u32);
     reader_trait!(ReadU64Future, u64, read_u64);
-    reader_trait!(ReadU128Future, u16, read_u128);
+    reader_trait!(ReadU128Future, u128, read_u128);
     reader_trait!(ReadI8Future, i8, read_i8);
     reader_trait!(ReadI16Future, i16, read_i16);
     reader_trait!(ReadI32Future, i32, read_i32);
@@ -145,7 +145,7 @@ where
     reader_be_impl!(ReadU16Future, u16, read_u16);
     reader_be_impl!(ReadU32Future, u32, read_u32);
     reader_be_impl!(ReadU64Future, u64, read_u64);
-    reader_be_impl!(ReadU128Future, u16, read_u128);
+    reader_be_impl!(ReadU128Future, u128, read_u128);
     reader_be_impl!(ReadI8Future, i8, read_i8);
     reader_be_impl!(ReadI16Future, i16, read_i16);
     reader_be_impl!(ReadI32Future, i32, read_i32);
@@ -164,6 +164,6 @@ where
     reader_le_impl!(ReadI32LEFuture, i32, read_i32_le);
     reader_le_impl!(ReadI64LEFuture, i64, read_i64_le);
     reader_le_impl!(ReadI128LEFuture, i128, read_i128_le);
-    reader_be_impl!(ReadF32LEFuture, f32, read_f32_le);
-    reader_be_impl!(ReadF64LEFuture, f64, read_f64_le);
+    reader_le_impl!(ReadF32LEFuture, f32, read_f32_le);
+    reader_le_impl!(ReadF64LEFuture, f64, read_f64_le);
 }
