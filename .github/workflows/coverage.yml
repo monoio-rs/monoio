@@ -12,6 +12,9 @@ env:
   RUST_TOOLCHAIN: nightly
   TOOLCHAIN_PROFILE: minimal
 
+permissions:
+  contents: read
+
 jobs:
   coverage:
     name: Run cargo coverage
@@ -21,14 +24,19 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install toolchain
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile "$TOOLCHAIN_PROFILE" --component llvm-tools-preview
           rustup override set "$RUST_TOOLCHAIN"
       - name: Install cargo-llvm-cov
-        run: cargo install --locked cargo-llvm-cov
+        run: cargo install --locked cargo-llvm-cov --version 0.9.1
       - name: Generate code coverage
         run: sudo bash -c "ulimit -Sl 512 && ulimit -Hl 512 && sudo -u runner /home/runner/.cargo/bin/cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info"
       - name: Upload coverage to Codecov
-        run: bash <(curl -s https://codecov.io/bash) -f lcov.info -t ${{ secrets.CODECOV_TOKEN }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: lcov.info
+          disable_search: true
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

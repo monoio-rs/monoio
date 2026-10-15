@@ -1,5 +1,5 @@
 //! Copied from tokio.
-//! Ready and Interest.
+//! Readiness states.
 
 use std::{fmt, ops};
 
@@ -141,47 +141,6 @@ impl Ready {
     pub(crate) fn contains<T: Into<Self>>(self, other: T) -> bool {
         let other = other.into();
         (self & other) == other
-    }
-}
-
-/// Readiness event interest.
-///
-/// Specifies the readiness events the caller is interested in when awaiting on
-/// I/O resource readiness states.
-#[derive(Clone, Copy, Eq, PartialEq)]
-// TODO: Do we need to remove it?
-#[allow(dead_code)]
-pub(crate) struct Interest(mio::Interest);
-
-impl Interest {
-    /// Add together two `Interest` values.
-    ///
-    /// This function works from a `const` context.
-    #[allow(dead_code)]
-    pub(crate) const fn add(self, other: Interest) -> Interest {
-        Interest(self.0.add(other.0))
-    }
-}
-
-impl ops::BitOr for Interest {
-    type Output = Self;
-
-    #[inline]
-    fn bitor(self, other: Self) -> Self {
-        self.add(other)
-    }
-}
-
-impl ops::BitOrAssign for Interest {
-    #[inline]
-    fn bitor_assign(&mut self, other: Self) {
-        self.0 = (*self | other).0;
-    }
-}
-
-impl fmt::Debug for Interest {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(fmt)
     }
 }
 

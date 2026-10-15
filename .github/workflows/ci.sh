@@ -23,49 +23,49 @@ if [ "${NO_RUN}" != "1" ] && [ "${NO_RUN}" != "true" ]; then
     cd "${PROJECT_DIR}"/monoio
 
     # only enable legacy driver
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils"
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils" --release
+    "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils"
+    "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils" --release
 
     # enable legacy and sync
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils,sync"
+    "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils,sync"
 
     # enable legacy and sync
     # TODO: fix linker error on loongarch64
     if [ "${TARGET}" != "loongarch64-unknown-linux-gnu" ]; then
-        "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils,sync" --release
+        "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features "async-cancel,bytes,legacy,macros,utils,sync" --release
     fi
 
     if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ] || [ "${TARGET}" = "i686-unknown-linux-gnu" ]; then
         # only enabled uring driver
-        "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iouring,macros,utils"
-        "${CARGO}" test --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iouring,macros,utils" --release
+        "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iouring,macros,utils"
+        "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features "async-cancel,bytes,iouring,macros,utils" --release
     fi
 
     if [ "${TARGET}" != "aarch64-unknown-linux-gnu" ] && [ "${TARGET}" != "armv7-unknown-linux-gnueabihf" ] &&
         [ "${TARGET}" != "riscv64gc-unknown-linux-gnu" ] && [ "${TARGET}" != "s390x-unknown-linux-gnu" ] &&
         [ "${TARGET}" != "loongarch64-unknown-linux-gnu" ]; then
         # enable uring+legacy driver
-        "${CARGO}" test --target "${TARGET}"
-        "${CARGO}" test --target "${TARGET}" --release
+        "${CARGO}" test --locked --target "${TARGET}"
+        "${CARGO}" test --locked --target "${TARGET}" --release
     fi
 
     if [ "${CHANNEL}" = "nightly" ] && ([ "${TARGET}" = "x86_64-unknown-linux-gnu" ] || [ "${TARGET}" = "i686-unknown-linux-gnu" ]); then
-        "${CARGO}" test --target "${TARGET}" --all-features
-        "${CARGO}" test --target "${TARGET}" --all-features --release
+        "${CARGO}" test --locked --target "${TARGET}" --all-features
+        "${CARGO}" test --locked --target "${TARGET}" --all-features --release
     fi
 
     # test monoio-compat mod
     cd "${PROJECT_DIR}"/monoio-compat
 
-    "${CARGO}" test --target "${TARGET}"
-    "${CARGO}" test --target "${TARGET}" --release
+    "${CARGO}" test --locked --target "${TARGET}"
+    "${CARGO}" test --locked --target "${TARGET}" --release
 
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features hyper
-    "${CARGO}" test --target "${TARGET}" --no-default-features --features hyper --release
+    "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features hyper
+    "${CARGO}" test --locked --target "${TARGET}" --no-default-features --features hyper --release
 
     if [ "${CHANNEL}" = "nightly" ]; then
-        "${CARGO}" test --target "${TARGET}" --all-features
-        "${CARGO}" test --target "${TARGET}" --all-features --release
+        "${CARGO}" test --locked --target "${TARGET}" --all-features
+        "${CARGO}" test --locked --target "${TARGET}" --all-features --release
     fi
 
     # todo maybe we should test examples here ?

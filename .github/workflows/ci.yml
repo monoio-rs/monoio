@@ -14,6 +14,9 @@ env:
   TOOLCHAIN_PROFILE: minimal
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: bash
@@ -21,46 +24,48 @@ defaults:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    env:
-      RUST_TOOLCHAIN: ${{ matrix.channel }}
-      TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install toolchain
         id: toolchain
+        env:
+          TOOLCHAIN: ${{ matrix.channel }}
+          TARGET: ${{ matrix.target }}
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile "$TOOLCHAIN_PROFILE" --target "$TARGET" --component rustfmt,clippy
-          rustup override set "$RUST_TOOLCHAIN"
+          rustup toolchain install "$TOOLCHAIN" --profile "$TOOLCHAIN_PROFILE" --target "$TARGET" --component rustfmt,clippy
+          rustup override set "$TOOLCHAIN"
           echo "rustc=$(rustc --version)" >> "$GITHUB_OUTPUT"
       - name: Install 32-bit MinGW linker
         if: matrix.target == 'i686-pc-windows-gnu'
         run: |
-          # Restart the MSYS2 shell after updating its runtime, then update packages.
+          # Restart MSYS2 after its runtime update before updating packages.
           C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
           C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
           C:/msys64/usr/bin/bash.exe -lc 'pacman -S --noconfirm --needed mingw-w64-i686-gcc'
-          echo "C:/msys64/mingw32/bin" >> "$GITHUB_PATH"
-          echo "CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER=C:/msys64/mingw32/bin/gcc.exe" >> "$GITHUB_ENV"
-          C:/msys64/mingw32/bin/gcc.exe --version
+          echo 'C:/msys64/mingw32/bin' >> "$GITHUB_PATH"
+          echo 'CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER=C:/msys64/mingw32/bin/gcc.exe' >> "$GITHUB_ENV"
+      - name: Generate lockfile
+        run: cargo generate-lockfile
       - name: Cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
             target
-          key: ${{ runner.os }}-${{ matrix.target }}-${{ steps.toolchain.outputs.rustc }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-${{ steps.toolchain.outputs.rustc }}-cargo-
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ steps.toolchain.outputs.rustc }}-${{ hashFiles('Cargo.lock') }}
       - name: Run cargo fmt
         if: matrix.channel == 'nightly'
         run: cargo fmt --all -- --check
       - name: Run cargo clippy
         if: matrix.channel == 'nightly'
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --locked -- -D warnings
       - name: Run cargo check with no default features
-        run: cargo check --no-default-features
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo check --locked --target "$TARGET" --no-default-features
       - env:
           CHANNEL: ${{ matrix.channel }}
           CROSS: ${{ !startsWith(matrix.target, 'x86_64') && contains(matrix.target, 'linux') && '1' || '0' }}
