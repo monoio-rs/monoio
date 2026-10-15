@@ -236,7 +236,7 @@ unsafe impl IoVecBufMut for VecBuf {
         self.read_iovec_len()
     }
 
-    unsafe fn set_init(&mut self, mut len: usize) {
+    unsafe fn set_init(&mut self, mut len: usize) { unsafe {
         for (idx, iovec) in self.iovecs.iter_mut().enumerate() {
             if iovec.iov_len <= len {
                 // set_init all
@@ -249,7 +249,7 @@ unsafe impl IoVecBufMut for VecBuf {
                 break;
             }
         }
-    }
+    }}
 }
 
 #[cfg(windows)]

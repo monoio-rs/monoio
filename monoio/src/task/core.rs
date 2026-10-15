@@ -142,9 +142,9 @@ impl<T: Future> CoreStage<T> {
         })
     }
 
-    unsafe fn set_stage(&self, stage: Stage<T>) {
+    unsafe fn set_stage(&self, stage: Stage<T>) { unsafe {
         self.with_mut(|ptr| *ptr = stage)
-    }
+    }}
 }
 
 impl Header {
@@ -157,16 +157,16 @@ impl Header {
 }
 
 impl Trailer {
-    pub(crate) unsafe fn set_waker(&self, waker: Option<Waker>) {
+    pub(crate) unsafe fn set_waker(&self, waker: Option<Waker>) { unsafe {
         self.waker.with_mut(|ptr| {
             *ptr = waker;
         });
-    }
+    }}
 
-    pub(crate) unsafe fn will_wake(&self, waker: &Waker) -> bool {
+    pub(crate) unsafe fn will_wake(&self, waker: &Waker) -> bool { unsafe {
         self.waker
             .with(|ptr| (*ptr).as_ref().unwrap().will_wake(waker))
-    }
+    }}
 
     pub(crate) fn wake_join(&self) {
         self.waker.with(|ptr| match unsafe { &*ptr } {

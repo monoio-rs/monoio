@@ -281,6 +281,6 @@ pub(crate) struct OpCanceller {
 
 impl OpCanceller {
     pub(crate) unsafe fn cancel(&self) {
-        super::CURRENT.with(|inner| inner.cancel_op(self))
+        super::CURRENT.with(|inner| unsafe { inner.cancel_op(self) })
     }
 }

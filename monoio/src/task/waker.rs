@@ -49,43 +49,43 @@ unsafe fn clone_waker<T, S>(ptr: *const ()) -> RawWaker
 where
     T: Future,
     S: Schedule,
-{
+{ unsafe {
     let header = ptr as *const Header;
     trace!("MONOIO DEBUG[Waker]: clone_waker");
     (*header).state.ref_inc();
     raw_waker::<T, S>(header)
-}
+}}
 
 unsafe fn drop_waker<T, S>(ptr: *const ())
 where
     T: Future,
     S: Schedule,
-{
+{ unsafe {
     let ptr = NonNull::new_unchecked(ptr as *mut Header);
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.drop_reference();
-}
+}}
 
 unsafe fn wake_by_val<T, S>(ptr: *const ())
 where
     T: Future,
     S: Schedule,
-{
+{ unsafe {
     let ptr = NonNull::new_unchecked(ptr as *mut Header);
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.wake_by_val();
-}
+}}
 
 // Wake without consuming the waker
 unsafe fn wake_by_ref<T, S>(ptr: *const ())
 where
     T: Future,
     S: Schedule,
-{
+{ unsafe {
     let ptr = NonNull::new_unchecked(ptr as *mut Header);
     let harness = Harness::<T, S>::from_raw(ptr);
     harness.wake_by_ref();
-}
+}}
 
 pub(super) fn raw_waker<T, S>(header: *const Header) -> RawWaker
 where

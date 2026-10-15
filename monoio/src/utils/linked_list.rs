@@ -174,7 +174,7 @@ impl<L: Link> LinkedList<L, L::Target> {
     ///
     /// The caller **must** ensure that `node` is currently contained by
     /// `self` or not contained by any other list.
-    pub(crate) unsafe fn remove(&mut self, node: NonNull<L::Target>) -> Option<L::Handle> {
+    pub(crate) unsafe fn remove(&mut self, node: NonNull<L::Target>) -> Option<L::Handle> { unsafe {
         if let Some(prev) = L::pointers(node).as_ref().get_prev() {
             debug_assert_eq!(L::pointers(prev).as_ref().get_next(), Some(node));
             L::pointers(prev)
@@ -206,7 +206,7 @@ impl<L: Link> LinkedList<L, L::Target> {
         L::pointers(node).as_mut().set_prev(None);
 
         Some(L::from_raw(node))
-    }
+    }}
 }
 
 impl<L: Link> fmt::Debug for LinkedList<L, L::Target> {

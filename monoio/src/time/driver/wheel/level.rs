@@ -202,7 +202,7 @@ impl Level {
     }
 
     pub(crate) unsafe fn add_entry(&mut self, item: TimerHandle) {
-        let slot = slot_for(item.cached_when(), self.level);
+        let slot = slot_for(unsafe { item.cached_when() }, self.level);
 
         self.slot[slot].push_front(item);
 
