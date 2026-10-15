@@ -22,7 +22,7 @@ fn detect_uring_inner() -> bool {
     }
 
     use io_uring::opcode::*;
-    auto_array::auto_array!(
+    super::auto_array::auto_array!(
         const USED_OP: [u8; _] = [
             Accept::CODE,
             AsyncCancel::CODE,

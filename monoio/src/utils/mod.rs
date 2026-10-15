@@ -1,5 +1,6 @@
 //! Common utils
 
+pub(crate) mod auto_array;
 pub(crate) mod box_into_inner;
 pub(crate) mod linked_list;
 #[allow(dead_code)]
