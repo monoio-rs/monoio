@@ -9,6 +9,11 @@ mod tcp_unsafe;
 #[cfg(feature = "hyper")]
 pub mod hyper;
 
+#[cfg(feature = "futures-stream")]
+mod futures_stream;
+#[cfg(feature = "futures-stream")]
+pub use futures_stream::LegacyStream;
+
 pub use safe_wrapper::StreamWrapper;
 pub use tcp_unsafe::TcpStreamCompat as TcpStreamCompatUnsafe;
 pub use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
