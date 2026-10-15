@@ -14,6 +14,7 @@ use crate::{
     buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut},
     driver::{op::Op, shared_fd::SharedFd},
     fs::{metadata::FileAttr, Metadata},
+    io::as_fd::{AsReadFd, AsWriteFd, SharedFdWrapper},
 };
 
 impl File {
@@ -55,6 +56,18 @@ impl File {
 impl AsRawFd for File {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
+    }
+}
+
+impl AsReadFd for File {
+    fn as_reader_fd(&mut self) -> &crate::io::as_fd::SharedFdWrapper {
+        SharedFdWrapper::new(&self.fd)
+    }
+}
+
+impl AsWriteFd for File {
+    fn as_writer_fd(&mut self) -> &SharedFdWrapper {
+        SharedFdWrapper::new(&self.fd)
     }
 }
 
