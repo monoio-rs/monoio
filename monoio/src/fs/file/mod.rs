@@ -4,7 +4,7 @@ use crate::{
     buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut},
     driver::{op::Op, shared_fd::SharedFd},
     fs::OpenOptions,
-    io::{AsyncReadRent, AsyncWriteRent},
+    io::{as_fd::{AsReadFd, AsWriteFd, SharedFdWrapper}, AsyncReadRent, AsyncWriteRent},
     BufResult,
 };
 
@@ -775,5 +775,19 @@ impl AsyncReadRentAt for File {
         pos: usize,
     ) -> impl Future<Output = BufResult<usize, T>> {
         File::read_at(self, buf, pos as u64)
+    }
+}
+
+impl AsReadFd for File {
+    #[inline]
+    fn as_reader_fd(&mut self) -> &SharedFdWrapper {
+        SharedFdWrapper::new(&self.fd)
+    }
+}
+
+impl AsWriteFd for File {
+    #[inline]
+    fn as_writer_fd(&mut self) -> &SharedFdWrapper {
+        SharedFdWrapper::new(&self.fd)
     }
 }

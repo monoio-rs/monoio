@@ -30,6 +30,29 @@ async fn zero_copy_for_tcp() {
 
 #[cfg(all(target_os = "linux", feature = "splice"))]
 #[monoio::test_all]
+async fn splice_file_to_pipe() {
+    use monoio::{fs::File, io::splice::SpliceSource, net::unix::new_pipe};
+
+    let dir = tempfile::Builder::new()
+        .prefix("monoio-splice-tests")
+        .tempdir()
+        .unwrap();
+    let file_path = dir.path().join("splice_test.txt");
+    let content = b"Hello, splice!";
+    std::fs::write(&file_path, content).unwrap();
+
+    let mut file = File::open(&file_path).await.unwrap();
+    let (_r, mut w) = new_pipe().unwrap();
+
+    let n = file
+        .splice_to_pipe(&mut w, content.len() as u32)
+        .await
+        .unwrap();
+    assert_eq!(n as usize, content.len());
+}
+
+#[cfg(all(target_os = "linux", feature = "splice"))]
+#[monoio::test_all]
 async fn zero_copy_for_uds() {
     use monoio::{
         buf::IoBufMut,
