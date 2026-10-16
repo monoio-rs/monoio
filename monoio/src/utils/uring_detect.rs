@@ -22,38 +22,36 @@ fn detect_uring_inner() -> bool {
     }
 
     use io_uring::opcode::*;
-    auto_const_array::auto_const_array! {
-        const USED_OP: [u8; _] = [
-            Accept::CODE,
-            AsyncCancel::CODE,
-            Close::CODE,
-            Connect::CODE,
-            Fsync::CODE,
-            #[cfg(feature = "mkdirat")]
-            MkDirAt::CODE,
-            OpenAt::CODE,
-            PollAdd::CODE,
-            ProvideBuffers::CODE,
-            Read::CODE,
-            Readv::CODE,
-            Recv::CODE,
-            #[cfg(feature = "renameat")]
-            RenameAt::CODE,
-            Send::CODE,
-            SendMsg::CODE,
-            RecvMsg::CODE,
-            #[cfg(feature = "splice")]
-            Splice::CODE,
-            Statx::CODE,
-            #[cfg(feature = "symlinkat")]
-            SymlinkAt::CODE,
-            Timeout::CODE,
-            #[cfg(feature = "unlinkat")]
-            UnlinkAt::CODE,
-            Write::CODE,
-            Writev::CODE,
-        ];
-    }
+    const USED_OP: &[u8] = &[
+        Accept::CODE,
+        AsyncCancel::CODE,
+        Close::CODE,
+        Connect::CODE,
+        Fsync::CODE,
+        #[cfg(feature = "mkdirat")]
+        MkDirAt::CODE,
+        OpenAt::CODE,
+        PollAdd::CODE,
+        ProvideBuffers::CODE,
+        Read::CODE,
+        Readv::CODE,
+        Recv::CODE,
+        #[cfg(feature = "renameat")]
+        RenameAt::CODE,
+        Send::CODE,
+        SendMsg::CODE,
+        RecvMsg::CODE,
+        #[cfg(feature = "splice")]
+        Splice::CODE,
+        Statx::CODE,
+        #[cfg(feature = "symlinkat")]
+        SymlinkAt::CODE,
+        Timeout::CODE,
+        #[cfg(feature = "unlinkat")]
+        UnlinkAt::CODE,
+        Write::CODE,
+        Writev::CODE,
+    ];
 
     let uring = err_to_false!(io_uring::IoUring::new(2));
     let mut probe = io_uring::Probe::new();
