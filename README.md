@@ -83,6 +83,18 @@ async fn echo(mut stream: TcpStream) -> std::io::Result<()> {
 
 You can find more example code in `examples` of this repository.
 
+### Readiness for owned Unix descriptors
+
+`monoio::io::AsyncFd::new(OwnedFd)` registers a descriptor for read readiness on the
+current runtime, without treating it as a socket. `readable().await` does not consume
+bytes or interpret EOF: the owner performs the descriptor's actual nonblocking
+operation, such as an eventfd read, pipe read, or process-exit observation.
+Readiness may be stale; after a `WouldBlock`, wait again. One task owns read
+readiness for a descriptor. Dropping the wrapper deregisters and closes it.
+
+The registration is read-only, so descriptors without a write filter, including
+kqueues, do not acquire an invalid write interest.
+
 ## Limitations
 1. On Linux 5.6 or newer, Monoio can use uring or epoll as io driver. On lower versions of Linux, it can only run in epoll mode. On macOS, kqueue can be used. Other platforms are currently not supported.
 2. Monoio can not solve all problems. If the workload is very unbalanced, it may cause performance degradation than Tokio since CPU cores may not be fully utilized.
