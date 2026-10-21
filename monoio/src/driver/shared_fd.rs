@@ -158,8 +158,15 @@ impl AsRawHandle for SharedFd {
 
 impl SharedFd {
     #[cfg(unix)]
-    #[allow(unreachable_code, unused)]
     pub(crate) fn new<const FORCE_LEGACY: bool>(fd: RawFd) -> io::Result<SharedFd> {
+        Self::new_with_interest::<FORCE_LEGACY, false>(fd)
+    }
+
+    #[cfg(unix)]
+    #[allow(unreachable_code, unused)]
+    pub(crate) fn new_with_interest<const FORCE_LEGACY: bool, const READ_ONLY: bool>(
+        fd: RawFd,
+    ) -> io::Result<SharedFd> {
         enum Reg {
             Uring,
             #[cfg(feature = "poll-io")]
@@ -178,7 +185,11 @@ impl SharedFd {
                         Reg::UringLegacy(super::IoUringDriver::register_poll_io(
                             inner,
                             &mut source,
-                            super::ready::RW_INTERESTS,
+                            if READ_ONLY {
+                                mio::Interest::READABLE
+                            } else {
+                                super::ready::RW_INTERESTS
+                            },
                         ))
                     }
                     #[cfg(not(feature = "poll-io"))]
@@ -190,7 +201,11 @@ impl SharedFd {
                 Reg::Legacy(super::legacy::LegacyDriver::register(
                     inner,
                     &mut source,
-                    super::ready::RW_INTERESTS,
+                    if READ_ONLY {
+                        mio::Interest::READABLE
+                    } else {
+                        super::ready::RW_INTERESTS
+                    },
                 ))
             }
         }) {
@@ -215,7 +230,11 @@ impl SharedFd {
                     super::legacy::LegacyDriver::register(
                         inner,
                         &mut source,
-                        super::ready::RW_INTERESTS,
+                        if READ_ONLY {
+                            mio::Interest::READABLE
+                        } else {
+                            super::ready::RW_INTERESTS
+                        },
                     )
                 }
             });
